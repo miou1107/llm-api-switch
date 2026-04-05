@@ -1,0 +1,20 @@
+sources:
+  - name: "awesome-free-inference"
+    url: "https://raw.githubusercontent.com/bradAGI/awesome-free-inference/main/README.md"
+    type: "markdown_table"
+
+  - name: "free-llm-api-resources"
+    url: "https://raw.githubusercontent.com/cheahjs/free-llm-api-resources/main/README.md"
+    type: "markdown_table"
+
+  - name: "awesome-free-llm-apis"
+    url: "https://raw.githubusercontent.com/mnfst/awesome-free-llm-apis/main/README.md"
+    type: "markdown_table"
+
+  - name: "free-llm-collection"
+    url: "https://raw.githubusercontent.com/for-the-zero/Free-LLM-Collection/main/README.md"
+    type: "markdown_table"
+
+  - name: "awesome-free-chatgpt"
+    url: "https://raw.githubusercontent.com/LiLittleCat/awesome-free-chatgpt/main/README.md"
+    type: "markdown_table"

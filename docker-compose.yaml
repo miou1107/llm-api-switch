@@ -1,0 +1,11 @@
+services:
+  app:
+    build: .
+    ports:
+      - "127.0.0.1:8300:8000"
+    volumes:
+      - ./data:/app/data
+      - ./config:/app/config
+    restart: unless-stopped
+    environment:
+      - LLM_SWITCH_DB_PATH=/app/data/llm_switch.db

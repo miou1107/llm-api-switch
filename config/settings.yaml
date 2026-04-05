@@ -1,0 +1,37 @@
+gateway:
+  host: "0.0.0.0"
+  port: 8000
+  api_key: null  # null = no auth required
+
+routing:
+  strategy: "best_score"  # best_score | weighted_random | round_robin
+  max_fallback_attempts: 3
+
+scoring:
+  weights:
+    success_rate: 0.30
+    quality: 0.25
+    latency: 0.20
+    quota_remaining: 0.15
+    freshness: 0.10
+
+monitor:
+  ping_interval_seconds: 3600      # 1 hour — free-tier providers have strict rate limits
+  quality_check_interval_seconds: 14400  # 4 hours (was 1 hour)
+  score_update_interval_seconds: 300     # 5 minutes
+
+  auto_disable_threshold: 0.50     # (legacy, kept for reference)
+  auto_disable_window: 20          # check last N requests
+  consecutive_fail_threshold: 10   # disable only after N consecutive failures
+  retry_backoff_minutes: [30, 60, 120, 240, 1440]  # exponential backoff
+
+discovery:
+  scan_interval_hours: 6
+  auto_approve: true               # true = fully automatic
+  probe_timeout_seconds: 30
+
+database:
+  path: "data/llm_switch.db"
+
+admin_auth:
+  session_ttl_hours: 168  # 7 days

@@ -1,0 +1,51 @@
+aliases:
+  # 最熱門的別名，對應多個 provider
+  llama-3.3-70b:
+    - provider: groq
+      model: llama-3.3-70b-versatile
+    - provider: openrouter
+      model: "meta-llama/llama-3.3-70b-instruct:free"
+    - provider: nvidia
+      model: meta/llama-3.3-70b-instruct
+    - provider: together
+      model: meta-llama/Llama-3.3-70B-Instruct-Turbo
+
+  llama-3.1-8b:
+    - provider: groq
+      model: llama-3.1-8b-instant
+    - provider: cerebras
+      model: llama3.1-8b
+    - provider: nvidia
+      model: meta/llama-3.1-8b-instruct
+    - provider: sambanova
+      model: Meta-Llama-3.1-8B-Instruct
+
+  deepseek-r1:
+    - provider: openrouter
+      model: "deepseek/deepseek-r1:free"
+    - provider: deepseek
+      model: deepseek-reasoner
+
+  deepseek-v3:
+    - provider: openrouter
+      model: "deepseek/deepseek-chat:free"
+    - provider: deepseek
+      model: deepseek-chat
+
+  mistral-small:
+    - provider: mistral
+      model: mistral-small-latest
+    - provider: openrouter
+      model: "mistralai/mistral-small-3.1-24b-instruct:free"
+
+  gemini-2.0-flash:
+    - provider: gemini
+      model: gemini-2.0-flash
+
+  qwen-3-235b:
+    - provider: cerebras
+      model: qwen-3-235b-a22b-instruct-2507
+
+  gpt-4o:
+    - provider: github
+      model: gpt-4o

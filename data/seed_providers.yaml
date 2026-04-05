@@ -1,0 +1,333 @@
+providers:
+  # =====================================================
+  # Groq — 最快速度，OpenAI 相容
+  # 註冊：https://console.groq.com/keys
+  # 免費：14,400 req/day, 131K tokens/min
+  # =====================================================
+  - id: groq
+    name: Groq
+    base_url: https://api.groq.com/openai/v1
+    api_key_env: GROQ_API_KEY
+    litellm_provider: groq
+    source: seed
+    enabled: true
+    models:
+      - id: llama-3.3-70b-versatile
+        context_window: 131072
+        max_output_tokens: 32768
+        supports_streaming: true
+        supports_function_calling: true
+        rate_limits:
+          rpm: 30
+          rpd: 14400
+          tpm: 131072
+
+      - id: llama-3.1-8b-instant
+        context_window: 131072
+        max_output_tokens: 8192
+        supports_streaming: true
+        supports_function_calling: true
+        rate_limits:
+          rpm: 30
+          rpd: 14400
+          tpm: 131072
+
+  # =====================================================
+  # Cerebras — 超快推理，wafer-scale 架構
+  # 註冊：https://cloud.cerebras.ai/platform
+  # 免費：1M tokens/day
+  # =====================================================
+  - id: cerebras
+    name: Cerebras
+    base_url: https://api.cerebras.ai/v1
+    api_key_env: CEREBRAS_API_KEY
+    litellm_provider: cerebras
+    source: seed
+    enabled: true
+    models:
+      - id: llama3.1-8b
+        context_window: 131072
+        max_output_tokens: 8192
+        supports_streaming: true
+        supports_function_calling: false
+        rate_limits:
+          rpm: 30
+          rpd: 14400
+          tpm: 1000000
+
+      - id: qwen-3-235b-a22b-instruct-2507
+        context_window: 32768
+        max_output_tokens: 8192
+        supports_streaming: true
+        supports_function_calling: false
+        rate_limits:
+          rpm: 30
+          rpd: 14400
+          tpm: 1000000
+
+  # =====================================================
+  # Google Gemini — 品質最好，額度大
+  # 註冊：https://aistudio.google.com/apikey
+  # 免費：1,500 req/day, 1M tokens/day
+  # =====================================================
+  - id: gemini
+    name: Google Gemini
+    base_url: https://generativelanguage.googleapis.com/v1beta
+    api_key_env: GEMINI_API_KEY
+    litellm_provider: gemini
+    source: seed
+    enabled: true
+    models:
+      - id: gemini-2.0-flash
+        context_window: 1048576
+        max_output_tokens: 8192
+        supports_streaming: true
+        supports_function_calling: true
+        rate_limits:
+          rpm: 15
+          rpd: 1500
+          tpm: 1000000
+
+  # =====================================================
+  # Mistral — 1B tokens/month 免費
+  # 註冊：https://console.mistral.ai/api-keys
+  # 免費：1B tokens/month
+  # =====================================================
+  - id: mistral
+    name: Mistral
+    base_url: https://api.mistral.ai/v1
+    api_key_env: MISTRAL_API_KEY
+    litellm_provider: mistral
+    source: seed
+    enabled: true
+    models:
+      - id: mistral-small-latest
+        context_window: 32000
+        max_output_tokens: 8192
+        supports_streaming: true
+        supports_function_calling: true
+        rate_limits:
+          rpm: 60
+          rpd: 14400
+          tpm: 500000
+
+  # =====================================================
+  # OpenRouter — 一個 key 打 29+ 免費 model
+  # 註冊：https://openrouter.ai/settings/keys
+  # 免費：200 req/day (充 $10 後 1000/day)
+  # =====================================================
+  - id: openrouter
+    name: OpenRouter
+    base_url: https://openrouter.ai/api/v1
+    api_key_env: OPENROUTER_API_KEY
+    litellm_provider: openrouter
+    source: seed
+    enabled: true
+    models:
+      - id: deepseek/deepseek-r1:free
+        context_window: 65536
+        max_output_tokens: 8192
+        supports_streaming: true
+        supports_function_calling: false
+        rate_limits:
+          rpm: 20
+          rpd: 200
+          tpm: 200000
+
+      - id: deepseek/deepseek-chat:free
+        context_window: 65536
+        max_output_tokens: 8192
+        supports_streaming: true
+        supports_function_calling: true
+        rate_limits:
+          rpm: 20
+          rpd: 200
+          tpm: 200000
+
+      - id: meta-llama/llama-3.3-70b-instruct:free
+        context_window: 131072
+        max_output_tokens: 8192
+        supports_streaming: true
+        supports_function_calling: true
+        rate_limits:
+          rpm: 20
+          rpd: 200
+          tpm: 200000
+
+      - id: mistralai/mistral-small-3.1-24b-instruct:free
+        context_window: 131072
+        max_output_tokens: 8192
+        supports_streaming: true
+        supports_function_calling: true
+        rate_limits:
+          rpm: 20
+          rpd: 200
+          tpm: 200000
+
+  # =====================================================
+  # NVIDIA NIM — 免費 1000 credits
+  # 註冊：https://build.nvidia.com/settings/api-keys
+  # 免費：1000 credits
+  # =====================================================
+  - id: nvidia
+    name: NVIDIA NIM
+    base_url: https://integrate.api.nvidia.com/v1
+    api_key_env: NVIDIA_API_KEY
+    litellm_provider: nvidia_nim
+    source: seed
+    enabled: true
+    models:
+      - id: meta/llama-3.1-8b-instruct
+        context_window: 131072
+        max_output_tokens: 4096
+        supports_streaming: true
+        supports_function_calling: false
+        rate_limits:
+          rpm: 10
+          rpd: 500
+          tpm: 100000
+
+      - id: meta/llama-3.3-70b-instruct
+        context_window: 131072
+        max_output_tokens: 4096
+        supports_streaming: true
+        supports_function_calling: false
+        rate_limits:
+          rpm: 10
+          rpd: 500
+          tpm: 100000
+
+  # =====================================================
+  # DeepSeek — 推理能力最強
+  # 註冊：https://platform.deepseek.com/api_keys
+  # 免費：每月送 credits
+  # =====================================================
+  - id: deepseek
+    name: DeepSeek
+    base_url: https://api.deepseek.com/v1
+    api_key_env: DEEPSEEK_API_KEY
+    litellm_provider: deepseek
+    source: seed
+    enabled: true
+    models:
+      - id: deepseek-chat
+        context_window: 65536
+        max_output_tokens: 8192
+        supports_streaming: true
+        supports_function_calling: true
+        rate_limits:
+          rpm: 10
+          rpd: 1000
+          tpm: 200000
+
+      - id: deepseek-reasoner
+        context_window: 65536
+        max_output_tokens: 8192
+        supports_streaming: true
+        supports_function_calling: false
+        rate_limits:
+          rpm: 10
+          rpd: 500
+          tpm: 200000
+
+  # =====================================================
+  # Together AI — 200+ models, 免費 credits
+  # 註冊：https://api.together.xyz/settings/api-keys
+  # 免費：免費 credits
+  # =====================================================
+  - id: together
+    name: Together AI
+    base_url: https://api.together.xyz/v1
+    api_key_env: TOGETHER_API_KEY
+    litellm_provider: together_ai
+    source: seed
+    enabled: true
+    models:
+      - id: meta-llama/Llama-3.3-70B-Instruct-Turbo
+        context_window: 131072
+        max_output_tokens: 8192
+        supports_streaming: true
+        supports_function_calling: true
+        rate_limits:
+          rpm: 60
+          rpd: 5000
+          tpm: 200000
+
+  # =====================================================
+  # SambaNova — 持久免費 tier
+  # 註冊：https://cloud.sambanova.ai
+  # 免費：200K tokens/day
+  # =====================================================
+  - id: sambanova
+    name: SambaNova
+    base_url: https://api.sambanova.ai/v1
+    api_key_env: SAMBANOVA_API_KEY
+    litellm_provider: sambanova
+    source: seed
+    enabled: true
+    models:
+      - id: Meta-Llama-3.1-8B-Instruct
+        context_window: 8192
+        max_output_tokens: 4096
+        supports_streaming: true
+        supports_function_calling: false
+        rate_limits:
+          rpm: 10
+          rpd: 1000
+          tpm: 200000
+
+  # =====================================================
+  # GitHub Models — 用 GitHub PAT 就能用
+  # 註冊：https://github.com/settings/tokens
+  # 免費：50-150 req/day
+  # =====================================================
+  - id: github
+    name: GitHub Models
+    base_url: https://models.inference.ai.azure.com
+    api_key_env: GITHUB_TOKEN
+    litellm_provider: github
+    source: seed
+    enabled: true
+    models:
+      - id: gpt-4o
+        context_window: 128000
+        max_output_tokens: 16384
+        supports_streaming: true
+        supports_function_calling: true
+        rate_limits:
+          rpm: 10
+          rpd: 50
+          tpm: 100000
+
+  # =====================================================
+  # Scaleway — 1M 免費 tokens，OpenAI 相容
+  # 註冊：https://console.scaleway.com
+  # 免費：1,000,000 tokens
+  # =====================================================
+  - id: scaleway
+    name: Scaleway
+    base_url: https://api.scaleway.ai/v1
+    api_key_env: SCALEWAY_API_KEY
+    litellm_provider: openai
+    source: seed
+    enabled: true
+    models:
+      - id: llama-3.3-70b-instruct
+        context_window: 131072
+        max_output_tokens: 8192
+        supports_streaming: true
+        supports_function_calling: false
+        rate_limits:
+          rpm: 30
+          rpd: 5000
+          tpm: 200000
+
+      - id: qwen3-235b-a22b-instruct-2507
+        context_window: 32768
+        max_output_tokens: 8192
+        supports_streaming: true
+        supports_function_calling: false
+        rate_limits:
+          rpm: 30
+          rpd: 5000
+          tpm: 200000

@@ -1,0 +1,259 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>LLM API Switch - API 文件</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    body { font-family: system-ui, sans-serif; }
+    pre { background: #1e1e2e; padding: 16px; border-radius: 8px; overflow-x: auto; }
+    code { font-family: 'Menlo', 'Monaco', monospace; font-size: 13px; }
+  </style>
+</head>
+<body class="bg-gray-950 text-gray-200 min-h-screen">
+  <div class="max-w-3xl mx-auto px-6 py-10">
+
+    <h1 class="text-2xl font-bold text-white mb-2">LLM API Switch</h1>
+    <p class="text-gray-400 mb-8">免費 LLM API 聚合代理 — OpenAI 相容介面</p>
+
+    <hr class="border-gray-800 mb-8">
+
+    <h2 class="text-lg font-semibold text-white mb-3">Base URL</h2>
+    <pre><code class="text-green-400">https://kkvin.com/llm-switch/v1</code></pre>
+
+    <h2 class="text-lg font-semibold text-white mt-8 mb-3">認證</h2>
+    <p class="text-gray-400 mb-2">所有 <code class="text-gray-300">/v1/*</code> 端點需要 Bearer token：</p>
+    <pre><code class="text-gray-300">Authorization: Bearer sk-你的API金鑰</code></pre>
+    <p class="text-gray-500 text-sm mt-2">API Key 由管理員從 Dashboard 產生。</p>
+
+    <h2 class="text-lg font-semibold text-white mt-8 mb-3">端點</h2>
+
+    <!-- Chat Completions -->
+    <div class="bg-gray-900 rounded-lg border border-gray-800 p-4 mb-4">
+      <h3 class="font-mono text-sm text-indigo-400 mb-2">POST /v1/chat/completions</h3>
+      <p class="text-gray-400 text-sm mb-3">聊天補全。完全相容 OpenAI Chat Completions API。</p>
+
+      <h4 class="text-xs text-gray-500 uppercase mb-1">Request Body</h4>
+      <pre><code class="text-gray-300">{
+  "model": "auto",
+  "messages": [
+    {"role": "user", "content": "你好"}
+  ],
+  "temperature": 0.7,
+  "max_tokens": 1000,
+  "stream": false
+}</code></pre>
+
+      <h4 class="text-xs text-gray-500 uppercase mt-4 mb-1">model 參數</h4>
+      <table class="w-full text-sm text-gray-400 mt-2">
+        <tr class="border-b border-gray-800"><td class="py-1 pr-4 font-mono text-green-400">auto</td><td>自動選擇評分最高、額度充足的模型（推薦）</td></tr>
+        <tr class="border-b border-gray-800"><td class="py-1 pr-4 font-mono">llama-3.3-70b</td><td>Llama 3.3 70B（Groq / OpenRouter / NVIDIA / Together）</td></tr>
+        <tr class="border-b border-gray-800"><td class="py-1 pr-4 font-mono">llama-3.1-8b</td><td>Llama 3.1 8B（Groq / Cerebras / NVIDIA / SambaNova）</td></tr>
+        <tr class="border-b border-gray-800"><td class="py-1 pr-4 font-mono">deepseek-r1</td><td>DeepSeek R1 推理模型（OpenRouter / DeepSeek）</td></tr>
+        <tr class="border-b border-gray-800"><td class="py-1 pr-4 font-mono">deepseek-v3</td><td>DeepSeek V3 對話模型（OpenRouter / DeepSeek）</td></tr>
+        <tr class="border-b border-gray-800"><td class="py-1 pr-4 font-mono">mistral-small</td><td>Mistral Small（Mistral / OpenRouter）</td></tr>
+        <tr class="border-b border-gray-800"><td class="py-1 pr-4 font-mono">gemini-2.0-flash</td><td>Google Gemini 2.0 Flash</td></tr>
+        <tr class="border-b border-gray-800"><td class="py-1 pr-4 font-mono">qwen-3-235b</td><td>Qwen 3 235B（Cerebras）</td></tr>
+        <tr><td class="py-1 pr-4 font-mono">gpt-4o</td><td>GPT-4o（GitHub Models）</td></tr>
+      </table>
+      <p class="text-gray-500 text-xs mt-2">也可以直接使用 provider 的原始 model ID，例如 <code>deepseek/deepseek-r1:free</code></p>
+
+      <h4 class="text-xs text-gray-500 uppercase mt-4 mb-1">Response</h4>
+      <pre><code class="text-gray-300">{
+  "id": "chatcmpl-abc123",
+  "object": "chat.completion",
+  "created": 1711000000,
+  "model": "auto",
+  "choices": [
+    {
+      "index": 0,
+      "message": {"role": "assistant", "content": "你好！有什麼可以幫助你的嗎？"},
+      "finish_reason": "stop"
+    }
+  ],
+  "usage": {
+    "prompt_tokens": 10,
+    "completion_tokens": 15,
+    "total_tokens": 25
+  }
+}</code></pre>
+    </div>
+
+    <!-- List Models -->
+    <div class="bg-gray-900 rounded-lg border border-gray-800 p-4 mb-4">
+      <h3 class="font-mono text-sm text-indigo-400 mb-2">GET /v1/models</h3>
+      <p class="text-gray-400 text-sm">列出所有可用模型。</p>
+    </div>
+
+    <!-- Health -->
+    <div class="bg-gray-900 rounded-lg border border-gray-800 p-4 mb-4">
+      <h3 class="font-mono text-sm text-indigo-400 mb-2">GET /health</h3>
+      <p class="text-gray-400 text-sm">健康檢查（不需認證）。回傳 <code>{"status": "ok"}</code></p>
+    </div>
+
+    <h2 class="text-lg font-semibold text-white mt-8 mb-3">使用範例</h2>
+
+    <!-- Python -->
+    <h3 class="text-sm text-gray-400 mb-2">Python (OpenAI SDK)</h3>
+    <pre><code class="text-gray-300">from openai import OpenAI
+
+client = OpenAI(
+    base_url="https://kkvin.com/llm-switch/v1",
+    api_key="sk-你的API金鑰"
+)
+
+response = client.chat.completions.create(
+    model="auto",
+    messages=[{"role": "user", "content": "你好"}]
+)
+
+print(response.choices[0].message.content)</code></pre>
+
+    <!-- curl -->
+    <h3 class="text-sm text-gray-400 mt-6 mb-2">curl</h3>
+    <pre><code class="text-gray-300">curl https://kkvin.com/llm-switch/v1/chat/completions \
+  -H "Authorization: Bearer sk-你的API金鑰" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "model": "auto",
+    "messages": [{"role": "user", "content": "你好"}]
+  }'</code></pre>
+
+    <!-- JavaScript -->
+    <h3 class="text-sm text-gray-400 mt-6 mb-2">JavaScript (fetch)</h3>
+    <pre><code class="text-gray-300">const response = await fetch("https://kkvin.com/llm-switch/v1/chat/completions", {
+  method: "POST",
+  headers: {
+    "Authorization": "Bearer sk-你的API金鑰",
+    "Content-Type": "application/json"
+  },
+  body: JSON.stringify({
+    model: "auto",
+    messages: [{ role: "user", content: "你好" }]
+  })
+});
+const data = await response.json();
+console.log(data.choices[0].message.content);</code></pre>
+
+    <!-- Node.js -->
+    <h3 class="text-sm text-gray-400 mt-6 mb-2">Node.js (OpenAI SDK)</h3>
+    <pre><code class="text-gray-300">import OpenAI from "openai";
+
+const client = new OpenAI({
+  baseURL: "https://kkvin.com/llm-switch/v1",
+  apiKey: "sk-你的API金鑰"
+});
+
+const completion = await client.chat.completions.create({
+  model: "auto",
+  messages: [{ role: "user", content: "你好" }]
+});
+
+console.log(completion.choices[0].message.content);</code></pre>
+
+    <h2 class="text-lg font-semibold text-white mt-8 mb-3">特性</h2>
+    <ul class="text-gray-400 text-sm space-y-1 list-disc pl-5">
+      <li><strong>model: "auto"</strong> — 自動選擇評分最高、額度充足的模型</li>
+      <li><strong>自動 fallback</strong> — 如果選中的 provider 失敗，自動切換到下一個（最多 3 次）</li>
+      <li><strong>額度感知</strong> — 額度快用完的 provider 會被自動跳過</li>
+      <li><strong>完全相容 OpenAI API</strong> — 任何支援 OpenAI SDK 的工具都能直接使用</li>
+    </ul>
+
+    <h2 class="text-lg font-semibold text-white mt-8 mb-3">錯誤碼</h2>
+    <table class="w-full text-sm text-gray-400">
+      <tr class="border-b border-gray-800"><td class="py-1 pr-4">401</td><td>無效或缺少 API Key</td></tr>
+      <tr class="border-b border-gray-800"><td class="py-1 pr-4">400</td><td>無效的請求（找不到 model 等）</td></tr>
+      <tr class="border-b border-gray-800"><td class="py-1 pr-4">502</td><td>所有 provider 都失敗</td></tr>
+      <tr><td class="py-1 pr-4">500</td><td>內部錯誤</td></tr>
+    </table>
+
+    <h2 class="text-lg font-semibold text-white mt-8 mb-3" id="playground">線上測試</h2>
+    <div class="bg-gray-900 rounded-lg border border-gray-800 p-4" id="app" x-data="playground()" x-cloak>
+      <div class="flex gap-2 mb-3">
+        <input x-model="apiKey" type="password" placeholder="貼上你的 API Key (sk-...)"
+          class="flex-1 bg-gray-800 border border-gray-700 rounded px-3 py-2 text-sm text-white font-mono">
+        <select x-model="model" class="bg-gray-800 border border-gray-700 rounded px-2 py-2 text-sm text-gray-300">
+          <option value="auto">auto (自動)</option>
+          <option value="llama-3.3-70b">llama-3.3-70b</option>
+          <option value="llama-3.1-8b">llama-3.1-8b</option>
+          <option value="deepseek-r1">deepseek-r1</option>
+          <option value="deepseek-v3">deepseek-v3</option>
+          <option value="mistral-small">mistral-small</option>
+          <option value="gemini-2.0-flash">gemini-2.0-flash</option>
+        </select>
+      </div>
+      <form @submit.prevent="send()" class="flex gap-2 mb-3">
+        <input x-model="message" type="text" placeholder="輸入訊息測試..." :disabled="loading"
+          class="flex-1 bg-gray-800 border border-gray-700 rounded px-3 py-2 text-sm text-white">
+        <button type="submit" :disabled="loading||!apiKey||!message.trim()"
+          class="px-4 py-2 bg-indigo-600 hover:bg-indigo-500 disabled:bg-gray-700 rounded text-sm font-medium">
+          <span x-show="!loading">送出</span>
+          <span x-show="loading" class="animate-pulse">...</span>
+        </button>
+      </form>
+
+      <!-- Results -->
+      <template x-for="(r, i) in results" :key="i">
+        <div class="mb-3 rounded-lg border p-3 text-sm" :class="r.error ? 'border-red-800 bg-red-950/30' : 'border-gray-700 bg-gray-800/50'">
+          <div x-show="r.error" class="text-red-400" x-text="r.error"></div>
+          <div x-show="!r.error">
+            <div class="flex flex-wrap gap-3 mb-2 text-xs">
+              <span class="px-2 py-0.5 bg-indigo-900/50 text-indigo-300 rounded" x-text="'Model: ' + r.model"></span>
+              <span x-show="r.provider" class="px-2 py-0.5 bg-purple-900/50 text-purple-300 rounded" x-text="'Provider: ' + r.provider"></span>
+              <span class="px-2 py-0.5 bg-green-900/50 text-green-300 rounded" x-text="r.latency + 'ms'"></span>
+              <span class="px-2 py-0.5 bg-cyan-900/50 text-cyan-300 rounded" x-text="r.tokens + ' tokens'"></span>
+            </div>
+            <div class="text-gray-400 text-xs mb-1">Q: <span class="text-gray-300" x-text="r.question"></span></div>
+            <pre class="text-gray-200 text-sm whitespace-pre-wrap font-sans" x-text="r.content"></pre>
+          </div>
+        </div>
+      </template>
+      <div x-show="results.length===0" class="text-gray-600 text-xs text-center py-4">輸入 API Key 和訊息，按送出即可測試</div>
+    </div>
+
+    <div class="mt-10 pt-6 border-t border-gray-800 text-xs text-gray-600">
+      LLM API Switch v0.1.0 &middot; <a href="/llm-switch/dashboard/" class="text-indigo-500 hover:underline">Dashboard</a>
+    </div>
+  </div>
+
+<script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
+<script>
+function playground() {
+  const base = window.location.pathname.replace(/\/dashboard\/.*$/, '');
+  return {
+    apiKey: '', model: 'auto', message: '', loading: false, results: [],
+    async send() {
+      const q = this.message.trim(); if (!q) return;
+      this.loading = true; this.message = '';
+      const t0 = performance.now();
+      try {
+        const r = await fetch(`${base}/v1/chat/completions`, {
+          method: 'POST',
+          headers: { 'Authorization': `Bearer ${this.apiKey}`, 'Content-Type': 'application/json' },
+          body: JSON.stringify({ model: this.model, messages: [{ role: 'user', content: q }] })
+        });
+        const d = await r.json();
+        const ms = Math.round(performance.now() - t0);
+        if (d.error) {
+          this.results.unshift({ error: d.error.message || d.error, question: q });
+        } else {
+          this.results.unshift({
+            question: q,
+            content: d.choices?.[0]?.message?.content || '(empty)',
+            model: d.model || '?',
+            provider: d.provider || '',
+            latency: ms,
+            tokens: d.usage?.total_tokens || 0,
+          });
+        }
+      } catch (e) {
+        this.results.unshift({ error: e.message, question: q });
+      }
+      this.loading = false;
+    }
+  };
+}
+</script>
+</body>
+</html>

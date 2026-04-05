@@ -1,0 +1,20 @@
+__pycache__/
+*.py[cod]
+*.egg-info/
+dist/
+build/
+.venv/
+venv/
+data/llm_switch.db
+.env
+*.log
+
+# Secrets
+config/api_keys.yaml
+config/._api_keys.yaml
+
+# macOS
+._*
+.DS_Store
+
+data/

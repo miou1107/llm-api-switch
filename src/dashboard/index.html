@@ -1,0 +1,443 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>LLM API Switch</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
+  <style>
+    [x-cloak] { display: none !important; }
+    body { font-family: system-ui, sans-serif; }
+    .dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; }
+    .dot-green { background: #22c55e; }
+    .dot-red { background: #ef4444; }
+    .dot-yellow { background: #eab308; }
+    .dot-gray { background: #6b7280; }
+    #chat-box { scroll-behavior: smooth; }
+    .chat-bubble pre { white-space: pre-wrap; word-break: break-word; margin: 0; font-family: inherit; }
+  </style>
+</head>
+<body class="bg-gray-950 text-gray-100 min-h-screen" x-data="app()" x-init="init()">
+
+  <!-- Login Screen -->
+  <div x-show="authState==='login'" x-cloak class="min-h-screen flex items-center justify-center">
+    <div class="bg-gray-900 border border-gray-800 rounded-xl p-8 w-80">
+      <h1 class="text-xl font-bold text-center mb-6">LLM API Switch</h1>
+      <form @submit.prevent="doLogin()">
+        <input x-model="loginUsername" type="text" placeholder="Username" autocomplete="username"
+          class="w-full bg-gray-800 border border-gray-700 rounded px-3 py-2 text-sm text-white mb-3" autofocus>
+        <input x-model="loginPassword" type="password" placeholder="Password" autocomplete="current-password"
+          class="w-full bg-gray-800 border border-gray-700 rounded px-3 py-2 text-sm text-white mb-3">
+        <div x-show="loginError" class="text-red-400 text-xs mb-3" x-text="loginError"></div>
+        <button type="submit" :disabled="!loginUsername||!loginPassword"
+          class="w-full py-2 bg-indigo-600 hover:bg-indigo-500 disabled:bg-gray-700 rounded text-sm font-medium">登入</button>
+      </form>
+    </div>
+  </div>
+
+  <!-- Setup Screen (first-time) -->
+  <div x-show="authState==='setup'" x-cloak class="min-h-screen flex items-center justify-center">
+    <div class="bg-gray-900 border border-gray-800 rounded-xl p-8 w-80">
+      <h1 class="text-xl font-bold text-center mb-2">LLM API Switch</h1>
+      <p class="text-gray-400 text-xs text-center mb-6">首次使用，建立管理員帳號</p>
+      <form @submit.prevent="doSetup()">
+        <input x-model="setupUsername" type="text" placeholder="Username"
+          class="w-full bg-gray-800 border border-gray-700 rounded px-3 py-2 text-sm text-white mb-3" autofocus>
+        <input x-model="setupPassword" type="password" placeholder="Password"
+          class="w-full bg-gray-800 border border-gray-700 rounded px-3 py-2 text-sm text-white mb-3">
+        <input x-model="setupDisplayName" type="text" placeholder="Display Name (optional)"
+          class="w-full bg-gray-800 border border-gray-700 rounded px-3 py-2 text-sm text-white mb-3">
+        <div x-show="setupError" class="text-red-400 text-xs mb-3" x-text="setupError"></div>
+        <button type="submit" :disabled="!setupUsername||!setupPassword"
+          class="w-full py-2 bg-indigo-600 hover:bg-indigo-500 disabled:bg-gray-700 rounded text-sm font-medium">建立帳號</button>
+      </form>
+    </div>
+  </div>
+
+  <!-- Header (only when authenticated) -->
+  <header x-show="authState==='ok'" x-cloak class="border-b border-gray-800 px-6 py-3 flex items-center justify-between sticky top-0 bg-gray-950/95 backdrop-blur z-10">
+    <h1 class="text-lg font-bold">LLM API Switch</h1>
+    <div class="flex items-center gap-3 text-xs text-gray-500">
+      <span x-text="providers.filter(p=>p.enabled&&p.has_api_key).length + '/' + providers.length + ' 可用'"></span>
+      <span x-text="currentUser?.display_name || currentUser?.username" class="text-gray-400"></span>
+      <button @click="showPwModal=true" class="px-3 py-1 bg-gray-800 hover:bg-gray-700 rounded-lg text-gray-300">改密碼</button>
+      <button @click="refresh()" class="px-3 py-1 bg-gray-800 hover:bg-gray-700 rounded-lg text-gray-300">重整</button>
+      <button @click="doLogout()" class="px-3 py-1 bg-gray-800 hover:bg-red-900 rounded-lg text-gray-300">登出</button>
+    </div>
+  </header>
+
+  <main x-show="authState==='ok'" x-cloak class="max-w-6xl mx-auto p-4">
+
+    <!-- Overview -->
+    <div class="grid grid-cols-3 md:grid-cols-6 gap-2 mb-4">
+      <div class="bg-gray-900 rounded-lg border border-gray-800 p-3 text-center">
+        <div class="text-xl font-bold text-white" x-text="stats.enabled_providers + '/' + stats.total_providers"></div>
+        <div class="text-[10px] text-gray-500">供應商</div>
+      </div>
+      <div class="bg-gray-900 rounded-lg border border-gray-800 p-3 text-center">
+        <div class="text-xl font-bold text-purple-400" x-text="stats.total_models"></div>
+        <div class="text-[10px] text-gray-500">模型數</div>
+      </div>
+      <div class="bg-gray-900 rounded-lg border border-gray-800 p-3 text-center">
+        <div class="text-xl font-bold text-cyan-400" x-text="(stats.total_rpd||0).toLocaleString()"></div>
+        <div class="text-[10px] text-gray-500">總額度 req/天</div>
+      </div>
+      <div class="bg-gray-900 rounded-lg border border-gray-800 p-3 text-center">
+        <div class="text-xl font-bold text-blue-400" x-text="stats.today_calls || 0"></div>
+        <div class="text-[10px] text-gray-500">今日呼叫</div>
+      </div>
+      <div class="bg-gray-900 rounded-lg border border-gray-800 p-3 text-center">
+        <div class="text-xl font-bold text-green-400" x-text="(stats.today_tokens||0).toLocaleString()"></div>
+        <div class="text-[10px] text-gray-500">今日 tokens</div>
+      </div>
+      <div class="bg-gray-900 rounded-lg border border-gray-800 p-3 text-center">
+        <div class="text-xl font-bold" :class="(stats.avg_success_rate||100)>=90?'text-green-400':(stats.avg_success_rate||100)>=70?'text-yellow-400':'text-red-400'"
+          x-text="(stats.avg_success_rate||100) + '%'"></div>
+        <div class="text-[10px] text-gray-500">成功率</div>
+      </div>
+    </div>
+
+    <div class="grid grid-cols-1 lg:grid-cols-5 gap-4">
+
+      <!-- Left: Providers (3 cols) -->
+      <div class="lg:col-span-3 space-y-3">
+
+        <!-- Filter bar -->
+        <div class="flex items-center gap-2 text-xs">
+          <button @click="filter='all'" :class="filter==='all' ? 'bg-gray-700 text-white' : 'text-gray-500'" class="px-2 py-1 rounded">全部</button>
+          <button @click="filter='ok'" :class="filter==='ok' ? 'bg-green-900 text-green-300' : 'text-gray-500'" class="px-2 py-1 rounded">可用</button>
+          <button @click="filter='bad'" :class="filter==='bad' ? 'bg-red-900 text-red-300' : 'text-gray-500'" class="px-2 py-1 rounded">不可用</button>
+          <span class="flex-1"></span>
+          <button @click="triggerHealthCheck()" :disabled="healthChecking" class="px-2 py-1 bg-gray-800 hover:bg-gray-700 rounded text-gray-400">
+            <span x-show="!healthChecking">健康檢查</span>
+            <span x-show="healthChecking" class="animate-pulse">檢查中...</span>
+          </button>
+          <button @click="triggerScan()" :disabled="scanning" class="px-2 py-1 bg-gray-800 hover:bg-gray-700 rounded text-gray-400">
+            <span x-show="!scanning">掃描新 API</span>
+            <span x-show="scanning" class="animate-pulse">掃描中...</span>
+          </button>
+        </div>
+
+        <!-- Provider cards -->
+        <template x-for="p in filtered" :key="p.id">
+          <div class="bg-gray-900 rounded-lg border border-gray-800 px-4 py-3">
+            <!-- Provider header -->
+            <div class="flex items-center gap-2 mb-2">
+              <span class="dot" :class="p.enabled && p.has_api_key ? 'dot-green' : !p.has_api_key ? 'dot-yellow' : 'dot-red'"></span>
+              <span class="font-medium text-sm" x-text="p.name"></span>
+              <span class="text-gray-600 text-xs" x-text="p.litellm_provider"></span>
+              <span class="flex-1"></span>
+              <span x-show="!p.enabled && p.disable_reason" class="text-xs text-red-400 truncate max-w-xs" x-text="p.disable_reason"></span>
+              <button @click="toggleProvider(p)" class="text-xs text-gray-500 hover:text-gray-300" x-text="p.enabled ? '關閉' : '開啟'"></button>
+            </div>
+            <!-- Models: one line each -->
+            <div class="space-y-1">
+              <template x-for="m in p.models" :key="m.id">
+                <div class="flex items-center gap-3 text-xs text-gray-400 pl-4">
+                  <span class="font-mono text-gray-300 w-52 truncate" x-text="m.id"></span>
+                  <span class="font-mono" :class="(m.score?.composite||0)>=0.7?'text-green-400':(m.score?.composite||0)>=0.4?'text-yellow-400':'text-gray-600'"
+                    x-text="m.score ? ((m.score.composite*100)|0)+'分' : '--'"></span>
+                  <span x-text="m.score?.latency_p50 ? (m.score.latency_p50|0)+'ms' : ''"></span>
+                  <span class="flex-1 text-right" x-text="quotaText(m)"></span>
+                </div>
+              </template>
+            </div>
+          </div>
+        </template>
+
+        <!-- API Key setup (collapsible) -->
+        <details class="bg-gray-900 rounded-lg border border-gray-800">
+          <summary class="px-4 py-3 cursor-pointer text-sm text-gray-400 flex items-center gap-2">
+            <span>API Key 設定</span>
+            <span class="text-xs" :class="apiKeys.every(k=>k.is_set)?'text-green-500':'text-yellow-500'"
+              x-text="apiKeys.filter(k=>k.is_set).length+'/'+apiKeys.length+' 已設定'"></span>
+          </summary>
+          <div class="px-4 pb-3 space-y-2">
+            <template x-for="k in apiKeys" :key="k.env_name">
+              <div class="flex items-center gap-2 text-xs">
+                <span class="dot" :class="k.is_set?'dot-green':'dot-yellow'"></span>
+                <span class="w-28" x-text="k.provider_name"></span>
+                <input type="password" :placeholder="k.is_set?'已設定，輸入覆蓋...':'貼上 API Key'"
+                  class="flex-1 bg-gray-800 border border-gray-700 rounded px-2 py-1 text-xs text-white" x-model="k._input">
+                <button @click="saveApiKey(k)" :disabled="!k._input" class="px-2 py-1 bg-indigo-700 hover:bg-indigo-600 disabled:bg-gray-700 rounded text-xs">儲存</button>
+                <a x-show="k.register_url" :href="k.register_url" target="_blank" class="text-blue-400 hover:underline">註冊</a>
+              </div>
+            </template>
+          </div>
+        </details>
+
+        <!-- Logs (collapsible) -->
+        <details class="bg-gray-900 rounded-lg border border-gray-800">
+          <summary class="px-4 py-3 cursor-pointer text-sm text-gray-400 flex items-center gap-2">
+            <span>Log</span>
+            <span class="text-xs text-gray-500" x-text="logs.length + ' 筆'"></span>
+          </summary>
+          <div class="px-4 pb-3">
+            <div class="flex gap-1 mb-2 text-[10px]">
+              <button @click="logFilter='all'; fetchLogs()" :class="logFilter==='all'?'bg-gray-700 text-white':'text-gray-500'" class="px-2 py-0.5 rounded">全部</button>
+              <button @click="logFilter='api_call'; fetchLogs()" :class="logFilter==='api_call'?'bg-gray-700 text-white':'text-gray-500'" class="px-2 py-0.5 rounded">API 呼叫</button>
+              <button @click="logFilter='model_sync'; fetchLogs()" :class="logFilter==='model_sync'?'bg-gray-700 text-white':'text-gray-500'" class="px-2 py-0.5 rounded">Model 同步</button>
+            </div>
+            <div class="space-y-0.5 max-h-64 overflow-y-auto">
+              <template x-for="l in logs" :key="l.id">
+                <div class="flex items-center gap-2 text-[11px] py-0.5">
+                  <span class="text-gray-600 w-32 shrink-0" x-text="l.timestamp?.slice(5,19)"></span>
+                  <span class="w-16 shrink-0"
+                    :class="l.type==='api_call'?'text-blue-400':l.type==='model_sync'?'text-purple-400':'text-gray-400'"
+                    x-text="l.type==='api_call'?'API':l.type==='model_sync'?'同步':l.type"></span>
+                  <span class="text-gray-300 flex-1 truncate" x-text="l.message"></span>
+                  <span x-show="l.latency_ms" class="text-gray-500 shrink-0" x-text="(l.latency_ms||0).toFixed(0)+'ms'"></span>
+                  <span x-show="l.tokens" class="text-gray-500 shrink-0" x-text="l.tokens+'t'"></span>
+                  <span x-show="l.error" class="text-red-400 shrink-0 truncate max-w-[100px]" x-text="l.error"></span>
+                </div>
+              </template>
+              <div x-show="logs.length===0" class="text-gray-600 text-xs py-2">尚無紀錄</div>
+            </div>
+          </div>
+        </details>
+
+        <!-- Proxy Keys (collapsible) -->
+        <details class="bg-gray-900 rounded-lg border border-gray-800">
+          <summary class="px-4 py-3 cursor-pointer text-sm text-gray-400 flex items-center gap-2">
+            <span>Proxy API Keys</span>
+            <span class="text-xs text-gray-500" x-text="proxyKeys.length + ' 組'"></span>
+            <span class="flex-1"></span>
+            <a href="docs.html" target="_blank" class="text-indigo-400 hover:underline text-xs" @click.stop>API 說明書</a>
+          </summary>
+          <div class="px-4 pb-3 space-y-2">
+            <div class="flex items-center gap-2 text-xs">
+              <input type="text" x-model="newKeyName" placeholder="名稱" class="bg-gray-800 border border-gray-700 rounded px-2 py-1 text-xs text-white w-32">
+              <button @click="createProxyKey()" :disabled="!newKeyName.trim()" class="px-2 py-1 bg-indigo-700 hover:bg-indigo-600 disabled:bg-gray-700 rounded text-xs">產生</button>
+            </div>
+            <div x-show="newKeyRaw" class="p-2 bg-green-900/20 rounded text-xs space-y-1">
+              <p class="text-green-400">只顯示一次，請複製：</p>
+              <code class="text-green-300 font-mono select-all block" x-text="newKeyRaw"></code>
+              <p class="text-gray-400">API 說明書：<code class="text-indigo-300 select-all" x-text="window.location.origin + base + '/dashboard/docs.html'"></code></p>
+            </div>
+            <template x-for="pk in proxyKeys" :key="pk.key_id">
+              <div class="flex items-center gap-2 text-xs text-gray-400">
+                <span class="dot dot-green"></span>
+                <span class="w-20" x-text="pk.name"></span>
+                <code class="font-mono text-gray-300 select-all text-[11px]" x-text="pk.key_raw || pk.key_id"></code>
+                <span x-text="pk.total_requests+' req'"></span>
+                <span class="flex-1 text-right" x-text="pk.last_used_at||'未使用'"></span>
+                <button @click="revokeProxyKey(pk.key_id)" class="text-red-400 hover:text-red-300">刪除</button>
+              </div>
+            </template>
+          </div>
+        </details>
+      </div>
+
+      <!-- Right: Chat (2 cols) -->
+      <div class="lg:col-span-2">
+        <div class="bg-gray-900 rounded-lg border border-gray-800 flex flex-col sticky top-14" style="height:calc(100vh - 4.5rem)">
+          <div class="px-4 py-2 border-b border-gray-800 flex items-center gap-2 text-xs">
+            <span class="text-gray-400 shrink-0">即時測試</span>
+            <select x-model="chatModel" class="bg-gray-800 border border-gray-700 rounded px-2 py-1 text-xs text-gray-300 min-w-0 flex-1 truncate">
+              <option value="auto">auto (自動選最佳)</option>
+              <template x-for="m in models" :key="m.id">
+                <option :value="m.id" x-text="m.id + ' (' + m.provider + ')'"></option>
+              </template>
+            </select>
+          </div>
+          <div id="chat-box" class="flex-1 overflow-y-auto p-3 space-y-2">
+            <div x-show="chatMessages.length===0" class="text-center text-gray-600 text-xs py-8">輸入訊息測試</div>
+            <template x-for="(msg,i) in chatMessages" :key="i">
+              <div :class="msg.role==='user'?'flex justify-end':'flex justify-start'">
+                <div class="max-w-[85%] rounded-lg px-3 py-2 text-sm overflow-hidden"
+                  :class="msg.role==='user'?'bg-indigo-600 text-white':'bg-gray-800 text-gray-200'">
+                  <pre class="font-sans" x-text="msg.content"></pre>
+                  <div x-show="msg.meta" class="text-[10px] mt-1 opacity-50" x-text="msg.meta"></div>
+                </div>
+              </div>
+            </template>
+            <div x-show="chatStreaming" class="text-gray-500 text-sm animate-pulse">思考中...</div>
+          </div>
+          <div class="p-2 border-t border-gray-800">
+            <form @submit.prevent="sendChat()" class="flex gap-2">
+              <input x-model="chatInput" type="text" placeholder="輸入訊息..." :disabled="chatStreaming"
+                class="flex-1 bg-gray-800 border border-gray-700 rounded px-3 py-1.5 text-sm text-white">
+              <button type="submit" :disabled="chatStreaming||!chatInput.trim()" class="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-500 disabled:bg-gray-700 rounded text-sm">送出</button>
+            </form>
+            <div class="flex justify-end mt-1"><button @click="chatMessages=[]" class="text-[10px] text-gray-600 hover:text-gray-400">清除</button></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </main>
+
+  <!-- Change Password Modal -->
+  <div x-show="showPwModal" x-cloak class="fixed inset-0 bg-black/60 flex items-center justify-center z-50" @click.self="showPwModal=false">
+    <div class="bg-gray-900 border border-gray-800 rounded-xl p-6 w-80">
+      <h2 class="text-sm font-bold mb-4">變更密碼</h2>
+      <form @submit.prevent="doChangePassword()">
+        <input x-model="pwOld" type="password" placeholder="目前密碼" autocomplete="current-password"
+          class="w-full bg-gray-800 border border-gray-700 rounded px-3 py-2 text-sm text-white mb-3">
+        <input x-model="pwNew" type="password" placeholder="新密碼" autocomplete="new-password"
+          class="w-full bg-gray-800 border border-gray-700 rounded px-3 py-2 text-sm text-white mb-3">
+        <div x-show="pwError" class="text-red-400 text-xs mb-3" x-text="pwError"></div>
+        <div x-show="pwOk" class="text-green-400 text-xs mb-3">密碼已更新</div>
+        <div class="flex gap-2">
+          <button type="button" @click="showPwModal=false;pwOld='';pwNew='';pwError='';pwOk=false" class="flex-1 py-2 bg-gray-800 hover:bg-gray-700 rounded text-sm">取消</button>
+          <button type="submit" :disabled="!pwOld||!pwNew" class="flex-1 py-2 bg-indigo-600 hover:bg-indigo-500 disabled:bg-gray-700 rounded text-sm">確認</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+<script>
+function app() {
+  const base = window.location.pathname.includes('/llm-switch/') ? '/llm-switch' : '';
+  return {
+    authState: 'loading', currentUser: null,
+    loginUsername: '', loginPassword: '', loginError: '',
+    setupUsername: '', setupPassword: '', setupDisplayName: '', setupError: '',
+    stats: {},
+    providers: [], models: [], apiKeys: [], proxyKeys: [], logs: [], logFilter: 'all',
+    filter: 'all', scanning: false, scanResult: '', healthChecking: false,
+    newKeyName: '', newKeyRaw: '', copiedKey: false,
+    chatModel: '', chatInput: '', chatMessages: [], chatStreaming: false,
+    showPwModal: false, pwOld: '', pwNew: '', pwError: '', pwOk: false,
+
+    get filtered() {
+      let list = [...this.providers];
+      if (this.filter === 'ok') list = list.filter(p => p.enabled && p.has_api_key);
+      else if (this.filter === 'bad') list = list.filter(p => !p.enabled || !p.has_api_key);
+      // Sort by best model score
+      list.sort((a, b) => {
+        const sa = Math.max(0, ...a.models.map(m => m.score?.composite || 0));
+        const sb = Math.max(0, ...b.models.map(m => m.score?.composite || 0));
+        return sb - sa;
+      });
+      return list;
+    },
+
+    quotaText(m) {
+      if (!m.quota) return '';
+      const rpd = m.rate_limits?.rpd || 0;
+      const used = m.quota?.day?.used_requests || 0;
+      const remain = Math.max(0, rpd - used);
+      if (rpd === 0) return '';
+      return '剩 ' + remain.toLocaleString() + '/' + rpd.toLocaleString() + ' 次/天';
+    },
+
+    async init() {
+      try {
+        const r = await fetch(`${base}/admin/auth/me`);
+        if (r.ok) { this.currentUser = await r.json(); this.authState = 'ok'; await this.refresh(); setInterval(() => this.refreshQuiet(), 30000); }
+        else {
+          const s = await fetch(`${base}/admin/auth/status`);
+          const d = await s.json();
+          this.authState = d.needs_setup ? 'setup' : 'login';
+        }
+      } catch(e) { this.authState = 'login'; }
+    },
+    async doLogin() {
+      this.loginError = '';
+      try {
+        const r = await fetch(`${base}/admin/auth/login`, {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({username:this.loginUsername, password:this.loginPassword})});
+        if (r.ok) { const d = await r.json(); this.currentUser = d.user; this.authState = 'ok'; await this.refresh(); setInterval(() => this.refreshQuiet(), 30000); }
+        else { this.loginError = '帳號或密碼錯誤'; }
+      } catch(e) { this.loginError = '連線失敗'; }
+    },
+    async doSetup() {
+      this.setupError = '';
+      try {
+        const r = await fetch(`${base}/admin/auth/setup`, {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({username:this.setupUsername, password:this.setupPassword, display_name:this.setupDisplayName||null})});
+        if (r.ok) { const d = await r.json(); this.currentUser = d.user; this.authState = 'ok'; await this.refresh(); setInterval(() => this.refreshQuiet(), 30000); }
+        else { const d = await r.json(); this.setupError = d.error || '建立失敗'; }
+      } catch(e) { this.setupError = '連線失敗'; }
+    },
+    async doLogout() {
+      await fetch(`${base}/admin/auth/logout`, {method:'POST'});
+      this.authState = 'login'; this.currentUser = null;
+    },
+    async doChangePassword() {
+      this.pwError = ''; this.pwOk = false;
+      try {
+        const r = await fetch(`${base}/admin/auth/change-password`, {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({old_password:this.pwOld, new_password:this.pwNew})});
+        if (r.ok) { this.pwOk = true; this.pwOld = ''; this.pwNew = ''; }
+        else { const d = await r.json(); this.pwError = d.error || '變更失敗'; }
+      } catch(e) { this.pwError = '連線失敗'; }
+    },
+    async refresh() {
+      await Promise.all([this.fetchStats(), this.fetchProviders(), this.fetchApiKeys(), this.fetchProxyKeys(), this.fetchLogs()]);
+      this.buildModels();
+    },
+    async refreshQuiet() { await Promise.all([this.fetchStats(), this.fetchProviders()]); this.buildModels(); },
+    async fetchStats() { try { this.stats = await (await fetch(`${base}/admin/stats`)).json(); } catch(e) {} },
+    async fetchProviders() { try { this.providers = await (await fetch(`${base}/admin/providers/detail`)).json(); } catch(e) {} },
+    async fetchApiKeys() { try { this.apiKeys = (await (await fetch(`${base}/admin/api-keys`)).json()).map(k=>({...k,_input:''})); } catch(e) {} },
+    async fetchProxyKeys() { try { this.proxyKeys = await (await fetch(`${base}/admin/proxy-keys`)).json(); } catch(e) {} },
+    async fetchLogs() {
+      try {
+        const typeParam = this.logFilter === 'all' ? '' : `&type=${this.logFilter}`;
+        this.logs = await (await fetch(`${base}/admin/logs?limit=50${typeParam}`)).json();
+      } catch(e) {}
+    },
+
+    buildModels() {
+      const models = [];
+      for (const p of this.providers) {
+        if (!p.enabled || !p.has_api_key) continue;
+        for (const m of p.models) models.push({ id: m.id, provider: p.name, score: m.score?.composite || 0 });
+      }
+      models.sort((a, b) => b.score - a.score);
+      this.models = models;
+      if (!this.chatModel) this.chatModel = 'auto';
+    },
+
+    async saveApiKey(k) {
+      if (!k._input) return;
+      await fetch(`${base}/admin/api-keys`, { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({env_name:k.env_name, value:k._input}) });
+      k._input = ''; await this.refresh();
+    },
+    async toggleProvider(p) {
+      await fetch(`${base}/admin/providers/${p.id}/${p.enabled?'disable':'enable'}`, {method:'POST'});
+      await this.refresh();
+    },
+    async triggerHealthCheck() {
+      this.healthChecking = true;
+      try { await fetch(`${base}/admin/health-check`, {method:'POST'}); } catch(e) {}
+      this.healthChecking = false; await this.refresh();
+    },
+    async triggerScan() {
+      this.scanning = true;
+      try { await (await fetch(`${base}/admin/discovery/scan`, {method:'POST'})).json(); } catch(e) {}
+      this.scanning = false; await this.refresh();
+    },
+    async createProxyKey() {
+      if (!this.newKeyName.trim()) return;
+      const data = await (await fetch(`${base}/admin/proxy-keys`, { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({name:this.newKeyName.trim()}) })).json();
+      this.newKeyRaw = data.raw_key || ''; this.newKeyName = ''; await this.fetchProxyKeys();
+    },
+    async revokeProxyKey(id) {
+      if (!confirm('確定刪除此 Key？刪除後無法恢復。')) return;
+      await fetch(`${base}/admin/proxy-keys/${encodeURIComponent(id)}/revoke`, {method:'POST'});
+      await this.fetchProxyKeys();
+    },
+
+    async sendChat() {
+      const msg = this.chatInput.trim(); if (!msg) return;
+      this.chatMessages.push({role:'user', content:msg}); this.chatInput=''; this.scrollChat();
+      this.chatStreaming = true;
+      const t = performance.now();
+      try {
+        const r = await fetch(`${base}/admin/chat-test`, { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({model:this.chatModel, message:msg}) });
+        const d = await r.json();
+        const s = ((performance.now()-t)/1000).toFixed(2);
+        if (d.error) { this.chatMessages.push({role:'assistant', content:'錯誤：'+d.error, meta:s+'s'}); }
+        else {
+          const tag = d.provider ? `\n(LLM: ${d.model} / ${d.provider})` : '';
+          this.chatMessages.push({role:'assistant', content:(d.content||'（空）')+tag, meta:`${s}s ${d.tokens||0}t`});
+        }
+      } catch(e) { this.chatMessages.push({role:'assistant', content:'失敗：'+e.message}); }
+      this.chatStreaming = false; this.scrollChat();
+    },
+    scrollChat() { this.$nextTick(()=>{ const b=document.getElementById('chat-box'); if(b) b.scrollTop=b.scrollHeight; }); },
+  };
+}
+</script>
+</body>
+</html>
