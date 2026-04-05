@@ -35,6 +35,8 @@ def _classify_error(exc: BaseException) -> str:
     msg = str(exc).lower()
     if isinstance(exc, asyncio.TimeoutError) or "timeout" in msg:
         return "timeout"
+    if "402" in msg or "payment" in msg or "insufficient" in msg or "quota" in msg:
+        return "no_balance"
     if "rate" in msg or "429" in msg:
         return "rate_limit"
     if "auth" in msg or "401" in msg or "403" in msg or "invalid api key" in msg:

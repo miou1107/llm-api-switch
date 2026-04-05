@@ -71,7 +71,7 @@
   <main x-show="authState==='ok'" x-cloak class="max-w-6xl mx-auto p-4">
 
     <!-- Overview -->
-    <div class="grid grid-cols-3 md:grid-cols-6 gap-2 mb-4">
+    <div class="grid grid-cols-3 md:grid-cols-5 gap-2 mb-4 lg:mr-[35%]">
       <div class="bg-gray-900 rounded-lg border border-gray-800 p-3 text-center">
         <div class="text-xl font-bold text-white" x-text="stats.enabled_providers + '/' + stats.total_providers"></div>
         <div class="text-[10px] text-gray-500">供應商</div>
@@ -99,10 +99,9 @@
       </div>
     </div>
 
-    <div class="grid grid-cols-1 lg:grid-cols-5 gap-4">
-
-      <!-- Left: Providers (3 cols) -->
-      <div class="lg:col-span-3 space-y-3">
+    <div>
+      <!-- Left: Providers -->
+      <div class="space-y-3 lg:mr-[35%]">
 
         <!-- Filter bar -->
         <div class="flex items-center gap-2 text-xs">
@@ -139,10 +138,20 @@
                   <span class="font-mono text-gray-300 w-52 truncate" x-text="m.id"></span>
                   <span class="font-mono" :class="(m.score?.composite||0)>=0.7?'text-green-400':(m.score?.composite||0)>=0.4?'text-yellow-400':'text-gray-600'"
                     x-text="m.score ? ((m.score.composite*100)|0)+'分' : '--'"></span>
-                  <span class="px-1.5 py-0.5 rounded text-[10px] font-medium"
+                  <span @click="openHealthModal(p.id, m.id)"
+                    class="px-1.5 py-0.5 rounded text-[10px] font-medium cursor-pointer hover:opacity-80"
                     :class="modelStatus(p, m).cls"
                     x-text="modelStatus(p, m).text"></span>
-                  <span class="flex-1 text-right" x-text="quotaText(m)"></span>
+                  <span class="flex-1 flex items-center justify-end gap-2">
+                    <span class="text-right" x-text="quotaText(m)"></span>
+                    <template x-if="m.rate_limits?.rpd > 0">
+                      <span class="w-16 h-1.5 bg-gray-700 rounded-full overflow-hidden inline-block">
+                        <span class="h-full rounded-full block"
+                          :class="quotaPct(m) > 50 ? 'bg-green-500' : quotaPct(m) > 20 ? 'bg-yellow-500' : 'bg-red-500'"
+                          :style="'width:' + quotaPct(m) + '%'"></span>
+                      </span>
+                    </template>
+                  </span>
                 </div>
               </template>
             </div>
@@ -232,9 +241,8 @@
         </details>
       </div>
 
-      <!-- Right: Chat (2 cols) -->
-      <div class="lg:col-span-2">
-        <div class="bg-gray-900 rounded-lg border border-gray-800 flex flex-col sticky top-14" style="height:calc(100vh - 4.5rem)">
+      <!-- Right: Chat (fixed to viewport) -->
+      <div class="hidden lg:flex fixed right-4 flex-col bg-gray-900 rounded-lg border border-gray-800 overflow-hidden z-20" style="top:4rem;bottom:1rem;width:calc(35% - 2rem);max-width:480px">
           <div class="px-4 py-2 border-b border-gray-800 flex items-center gap-2 text-xs">
             <span class="text-gray-400 shrink-0">即時測試</span>
             <select x-model="chatModel" class="bg-gray-800 border border-gray-700 rounded px-2 py-1 text-xs text-gray-300 min-w-0 flex-1 truncate">
@@ -260,7 +268,7 @@
           <div class="p-2 border-t border-gray-800">
             <form @submit.prevent="sendChat()" class="flex gap-2">
               <input x-model="chatInput" type="text" placeholder="輸入訊息..." :disabled="chatStreaming"
-                class="flex-1 bg-gray-800 border border-gray-700 rounded px-3 py-1.5 text-sm text-white">
+                class="min-w-0 flex-1 bg-gray-800 border border-gray-700 rounded px-3 py-1.5 text-sm text-white">
               <button type="submit" :disabled="chatStreaming||!chatInput.trim()" class="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-500 disabled:bg-gray-700 rounded text-sm">送出</button>
             </form>
             <div class="flex justify-end mt-1"><button @click="chatMessages=[]" class="text-[10px] text-gray-600 hover:text-gray-400">清除</button></div>
@@ -269,6 +277,56 @@
       </div>
     </div>
   </main>
+
+  <!-- Health Check Log Modal -->
+  <div x-show="showHealthModal" x-cloak class="fixed inset-0 bg-black/60 flex items-center justify-center z-50" @click.self="showHealthModal=false">
+    <div class="bg-gray-900 border border-gray-800 rounded-xl p-5 w-[640px] max-h-[80vh] flex flex-col">
+      <div class="flex items-center justify-between mb-3">
+        <h2 class="text-sm font-bold">
+          <span x-text="healthModalProvider"></span> / <span class="font-mono" x-text="healthModalModel"></span>
+        </h2>
+        <div class="flex items-center gap-2">
+          <a :href="base + '/dashboard/health-log.html?provider=' + encodeURIComponent(healthModalProvider) + '&model=' + encodeURIComponent(healthModalModel)"
+            class="text-[10px] text-indigo-400 hover:underline">完整紀錄 →</a>
+          <button @click="showHealthModal=false" class="text-gray-500 hover:text-gray-300 text-lg leading-none">&times;</button>
+        </div>
+      </div>
+      <div class="overflow-y-auto flex-1">
+        <table class="w-full text-xs">
+          <thead>
+            <tr class="border-b border-gray-800 text-gray-500">
+              <th class="px-2 py-1.5 text-left font-medium">時間</th>
+              <th class="px-2 py-1.5 text-center font-medium">狀態</th>
+              <th class="px-2 py-1.5 text-right font-medium">延遲</th>
+              <th class="px-2 py-1.5 text-left font-medium">錯誤類型</th>
+              <th class="px-2 py-1.5 text-right font-medium">品質</th>
+            </tr>
+          </thead>
+          <tbody>
+            <template x-for="row in healthModalItems" :key="row.id">
+              <tr class="border-b border-gray-800/50" :class="!row.success ? 'bg-red-950/20' : ''">
+                <td class="px-2 py-1 text-gray-400 whitespace-nowrap" x-text="row.timestamp?.slice(5,19)"></td>
+                <td class="px-2 py-1 text-center">
+                  <span class="dot" :class="row.success ? 'dot-green' : 'dot-red'"></span>
+                </td>
+                <td class="px-2 py-1 text-right text-gray-400" x-text="row.latency_ms ? (row.latency_ms.toFixed(0) + 'ms') : '-'"></td>
+                <td class="px-2 py-1">
+                  <span x-show="row.error_type" class="px-1.5 py-0.5 rounded text-[10px] font-medium"
+                    :class="healthErrorClass(row.error_type)"
+                    x-text="healthErrorLabel(row.error_type)"></span>
+                </td>
+                <td class="px-2 py-1 text-right text-gray-400" x-text="row.output_quality_score != null ? row.output_quality_score.toFixed(2) : '-'"></td>
+              </tr>
+            </template>
+            <tr x-show="healthModalItems.length === 0">
+              <td colspan="5" class="px-2 py-6 text-center text-gray-600">無紀錄</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+      <div x-show="healthModalLoading" class="text-center text-gray-500 text-xs py-4 animate-pulse">載入中...</div>
+    </div>
+  </div>
 
   <!-- Change Password Modal -->
   <div x-show="showPwModal" x-cloak class="fixed inset-0 bg-black/60 flex items-center justify-center z-50" @click.self="showPwModal=false">
@@ -302,6 +360,7 @@ function app() {
     newKeyName: '', newKeyRaw: '', copiedKey: false,
     chatModel: '', chatInput: '', chatMessages: [], chatStreaming: false,
     showPwModal: false, pwOld: '', pwNew: '', pwError: '', pwOk: false,
+    showHealthModal: false, healthModalProvider: '', healthModalModel: '', healthModalItems: [], healthModalLoading: false,
 
     get filtered() {
       let list = [...this.providers];
@@ -319,23 +378,25 @@ function app() {
     modelStatus(p, m) {
       // 沒有 API key
       if (!p.has_api_key) return { text: '未設 Key', cls: 'bg-yellow-900/60 text-yellow-300' };
-      // 沒有 provider 啟用
-      if (!p.enabled) return { text: '已關閉', cls: 'bg-gray-700 text-gray-400' };
-      // 從最近檢查判斷
+      // 優先從最近檢查判斷原因（即使 provider 已關閉也要顯示原因）
       const checks = m.recent_checks || [];
       if (checks.length > 0) {
         const last = checks[0];
-        // 最近一次檢查失敗
         if (!last.success) {
           const errMap = {
             auth: { text: '權限問題', cls: 'bg-red-900/60 text-red-300' },
+            no_balance: { text: '餘額不足', cls: 'bg-red-900/60 text-red-300' },
             rate_limit: { text: '頻率限制', cls: 'bg-yellow-900/60 text-yellow-300' },
             timeout: { text: '逾時', cls: 'bg-orange-900/60 text-orange-300' },
             server_error: { text: '伺服器錯誤', cls: 'bg-purple-900/60 text-purple-300' },
+            all_attempts_failed: { text: '全部失敗', cls: 'bg-red-900/60 text-red-300' },
+            fallback_skipped: { text: '被跳過', cls: 'bg-gray-700 text-gray-400' },
           };
           return errMap[last.error_type] || { text: '異常', cls: 'bg-red-900/60 text-red-300' };
         }
       }
+      // provider 已關閉但沒有錯誤紀錄
+      if (!p.enabled) return { text: '已關閉', cls: 'bg-gray-700 text-gray-400' };
       // 餘額不足 (<10%)
       const rpd = m.rate_limits?.rpd || 0;
       const used = m.quota?.day?.used_requests || 0;
@@ -348,6 +409,13 @@ function app() {
       if (checks.length === 0) return { text: '未檢查', cls: 'bg-gray-700 text-gray-400' };
       // 正常
       return { text: '正常', cls: 'bg-green-900/60 text-green-300' };
+    },
+
+    quotaPct(m) {
+      const rpd = m.rate_limits?.rpd || 0;
+      if (rpd === 0) return 100;
+      const used = m.quota?.day?.used_requests || 0;
+      return Math.max(0, Math.min(100, ((rpd - used) / rpd) * 100));
     },
 
     quotaText(m) {
@@ -453,6 +521,44 @@ function app() {
       if (!confirm('確定刪除此 Key？刪除後無法恢復。')) return;
       await fetch(`${base}/admin/proxy-keys/${encodeURIComponent(id)}/revoke`, {method:'POST'});
       await this.fetchProxyKeys();
+    },
+
+    async openHealthModal(providerId, modelId) {
+      this.healthModalProvider = providerId;
+      this.healthModalModel = modelId;
+      this.healthModalItems = [];
+      this.healthModalLoading = true;
+      this.showHealthModal = true;
+      try {
+        const params = new URLSearchParams({ provider: providerId, model: modelId, per_page: 30 });
+        const r = await fetch(`${base}/admin/health-checks?${params}`);
+        if (r.ok) {
+          const data = await r.json();
+          this.healthModalItems = data.items || [];
+        }
+      } catch (e) { console.error(e); }
+      this.healthModalLoading = false;
+    },
+
+    healthErrorClass(type) {
+      const map = {
+        auth: 'bg-red-900/60 text-red-300',
+        no_balance: 'bg-red-900/60 text-red-300',
+        timeout: 'bg-orange-900/60 text-orange-300',
+        rate_limit: 'bg-yellow-900/60 text-yellow-300',
+        server_error: 'bg-purple-900/60 text-purple-300',
+        unknown: 'bg-gray-700 text-gray-300',
+      };
+      return map[type] || 'bg-gray-700 text-gray-300';
+    },
+
+    healthErrorLabel(type) {
+      const map = {
+        auth: '權限問題', no_balance: '餘額不足', timeout: '逾時',
+        rate_limit: '頻率限制', server_error: '伺服器錯誤',
+        all_attempts_failed: '全部失敗', fallback_skipped: '被跳過',
+      };
+      return map[type] || type || '異常';
     },
 
     async sendChat() {

@@ -171,6 +171,12 @@ function healthLog() {
     },
 
     async init() {
+      // Read filters from URL params (e.g. linked from dashboard)
+      const params = new URLSearchParams(window.location.search);
+      if (params.get('provider')) this.filterProvider = params.get('provider');
+      if (params.get('model')) this.filterModel = params.get('model');
+      if (params.get('success')) this.filterSuccess = params.get('success');
+      if (params.get('error_type')) this.filterErrorType = params.get('error_type');
       await this.fetchData();
     },
 
@@ -204,6 +210,7 @@ function healthLog() {
     errorClass(type) {
       const map = {
         auth: 'bg-red-900/60 text-red-300',
+        no_balance: 'bg-red-900/60 text-red-300',
         timeout: 'bg-orange-900/60 text-orange-300',
         rate_limit: 'bg-yellow-900/60 text-yellow-300',
         server_error: 'bg-purple-900/60 text-purple-300',
