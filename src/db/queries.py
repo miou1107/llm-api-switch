@@ -64,6 +64,72 @@ async def get_recent_health_checks(
     return [_row_to_dict(r) for r in rows]
 
 
+async def get_health_checks_paginated(
+    db: aiosqlite.Connection,
+    *,
+    page: int = 1,
+    per_page: int = 50,
+    provider_id: str | None = None,
+    model_id: str | None = None,
+    success: bool | None = None,
+    error_type: str | None = None,
+) -> dict[str, Any]:
+    """Return paginated health checks with filters, plus filter option lists."""
+    conditions: list[str] = []
+    params: list[Any] = []
+
+    if provider_id:
+        conditions.append("provider_id = ?")
+        params.append(provider_id)
+    if model_id:
+        conditions.append("model_id = ?")
+        params.append(model_id)
+    if success is not None:
+        conditions.append("success = ?")
+        params.append(1 if success else 0)
+    if error_type:
+        conditions.append("error_type = ?")
+        params.append(error_type)
+
+    where = (" WHERE " + " AND ".join(conditions)) if conditions else ""
+
+    # Total count
+    cursor = await db.execute(f"SELECT COUNT(*) FROM health_checks{where}", params)
+    total = (await cursor.fetchone())[0]
+
+    # Items
+    offset = (page - 1) * per_page
+    cursor = await db.execute(
+        f"SELECT * FROM health_checks{where} ORDER BY timestamp DESC LIMIT ? OFFSET ?",
+        [*params, per_page, offset],
+    )
+    items = [_row_to_dict(r) for r in await cursor.fetchall()]
+
+    # Filter options (distinct values)
+    providers_cursor = await db.execute("SELECT DISTINCT provider_id FROM health_checks ORDER BY provider_id")
+    providers = [r[0] for r in await providers_cursor.fetchall()]
+
+    models_cursor = await db.execute("SELECT DISTINCT model_id FROM health_checks ORDER BY model_id")
+    models = [r[0] for r in await models_cursor.fetchall()]
+
+    errors_cursor = await db.execute(
+        "SELECT DISTINCT error_type FROM health_checks WHERE error_type IS NOT NULL ORDER BY error_type"
+    )
+    error_types = [r[0] for r in await errors_cursor.fetchall()]
+
+    return {
+        "items": items,
+        "total": total,
+        "page": page,
+        "per_page": per_page,
+        "filters": {
+            "providers": providers,
+            "models": models,
+            "error_types": error_types,
+        },
+    }
+
+
 # ---------------------------------------------------------------------------
 # Quota usage
 # ---------------------------------------------------------------------------

@@ -14,6 +14,7 @@ from src.db.queries import (
     create_api_key,
     delete_provider_api_key,
     get_all_provider_api_keys,
+    get_health_checks_paginated,
     get_pending_discoveries,
     get_provider_scores,
     get_quota_usage_since,
@@ -234,6 +235,35 @@ async def handle_discovery_action(body: DiscoveryAction, request: Request) -> di
         return {"status": "rejected", "discovery_id": body.discovery_id}
     else:
         return {"error": f"Unknown action: {body.action}"}
+
+
+# ---------------------------------------------------------------------------
+# Health check history (paginated)
+# ---------------------------------------------------------------------------
+
+
+@router.get("/health-checks")
+async def list_health_checks(
+    request: Request,
+    page: int = 1,
+    per_page: int = 50,
+    provider: str | None = None,
+    model: str | None = None,
+    success: bool | None = None,
+    error_type: str | None = None,
+) -> dict[str, Any]:
+    """Return paginated health check history with filters."""
+    db = request.app.state.db
+    per_page = min(per_page, 200)
+    return await get_health_checks_paginated(
+        db,
+        page=page,
+        per_page=per_page,
+        provider_id=provider,
+        model_id=model,
+        success=success,
+        error_type=error_type,
+    )
 
 
 # ---------------------------------------------------------------------------

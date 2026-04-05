@@ -1,0 +1,218 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>健康檢查紀錄 — LLM API Switch</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
+  <style>
+    [x-cloak] { display: none !important; }
+    body { font-family: system-ui, sans-serif; }
+    .dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; }
+    .dot-green { background: #22c55e; }
+    .dot-red { background: #ef4444; }
+  </style>
+</head>
+<body class="bg-gray-950 text-gray-100 min-h-screen" x-data="healthLog()" x-init="init()">
+
+  <!-- Header -->
+  <header class="border-b border-gray-800 px-6 py-3 flex items-center justify-between sticky top-0 bg-gray-950/95 backdrop-blur z-10">
+    <div class="flex items-center gap-3">
+      <h1 class="text-lg font-bold">健康檢查紀錄</h1>
+      <span class="text-xs text-gray-500" x-text="'共 ' + total + ' 筆'"></span>
+    </div>
+    <div class="flex items-center gap-3 text-xs">
+      <button @click="fetchData()" class="px-3 py-1 bg-gray-800 hover:bg-gray-700 rounded-lg text-gray-300">重整</button>
+      <a :href="base + '/dashboard/'" class="px-3 py-1 bg-gray-800 hover:bg-gray-700 rounded-lg text-gray-300">← Dashboard</a>
+    </div>
+  </header>
+
+  <main class="max-w-7xl mx-auto p-4">
+
+    <!-- 篩選列 -->
+    <div class="flex flex-wrap items-center gap-3 mb-4 text-xs">
+      <!-- Provider -->
+      <div class="flex items-center gap-1">
+        <label class="text-gray-500">Provider</label>
+        <select x-model="filterProvider" @change="page=1; fetchData()"
+          class="bg-gray-800 border border-gray-700 rounded px-2 py-1 text-gray-300 min-w-[120px]">
+          <option value="">全部</option>
+          <template x-for="p in filters.providers" :key="p">
+            <option :value="p" x-text="p"></option>
+          </template>
+        </select>
+      </div>
+
+      <!-- Model -->
+      <div class="flex items-center gap-1">
+        <label class="text-gray-500">Model</label>
+        <select x-model="filterModel" @change="page=1; fetchData()"
+          class="bg-gray-800 border border-gray-700 rounded px-2 py-1 text-gray-300 min-w-[180px]">
+          <option value="">全部</option>
+          <template x-for="m in filteredModels" :key="m">
+            <option :value="m" x-text="m"></option>
+          </template>
+        </select>
+      </div>
+
+      <!-- 狀態 -->
+      <div class="flex items-center gap-1">
+        <label class="text-gray-500">狀態</label>
+        <select x-model="filterSuccess" @change="page=1; fetchData()"
+          class="bg-gray-800 border border-gray-700 rounded px-2 py-1 text-gray-300">
+          <option value="">全部</option>
+          <option value="true">成功</option>
+          <option value="false">失敗</option>
+        </select>
+      </div>
+
+      <!-- 錯誤類型 -->
+      <div class="flex items-center gap-1" x-show="filterSuccess === 'false'">
+        <label class="text-gray-500">錯誤類型</label>
+        <select x-model="filterErrorType" @change="page=1; fetchData()"
+          class="bg-gray-800 border border-gray-700 rounded px-2 py-1 text-gray-300">
+          <option value="">全部</option>
+          <template x-for="e in filters.error_types" :key="e">
+            <option :value="e" x-text="e"></option>
+          </template>
+        </select>
+      </div>
+
+      <!-- 清除篩選 -->
+      <button x-show="filterProvider || filterModel || filterSuccess || filterErrorType"
+        @click="filterProvider=''; filterModel=''; filterSuccess=''; filterErrorType=''; page=1; fetchData()"
+        class="px-2 py-1 text-gray-500 hover:text-gray-300">✕ 清除篩選</button>
+    </div>
+
+    <!-- 表格 -->
+    <div class="bg-gray-900 rounded-lg border border-gray-800 overflow-hidden">
+      <div class="overflow-x-auto">
+        <table class="w-full text-xs">
+          <thead>
+            <tr class="border-b border-gray-800 text-gray-500">
+              <th class="px-3 py-2 text-left font-medium">時間</th>
+              <th class="px-3 py-2 text-left font-medium">Provider</th>
+              <th class="px-3 py-2 text-left font-medium">Model</th>
+              <th class="px-3 py-2 text-center font-medium">狀態</th>
+              <th class="px-3 py-2 text-right font-medium">延遲</th>
+              <th class="px-3 py-2 text-left font-medium">錯誤類型</th>
+              <th class="px-3 py-2 text-right font-medium">品質</th>
+            </tr>
+          </thead>
+          <tbody>
+            <template x-for="row in items" :key="row.id">
+              <tr class="border-b border-gray-800/50 hover:bg-gray-800/30"
+                :class="!row.success ? 'bg-red-950/20' : ''">
+                <td class="px-3 py-1.5 text-gray-400 whitespace-nowrap" x-text="fmtTime(row.timestamp)"></td>
+                <td class="px-3 py-1.5 text-gray-300" x-text="row.provider_id"></td>
+                <td class="px-3 py-1.5 text-gray-300 font-mono" x-text="row.model_id"></td>
+                <td class="px-3 py-1.5 text-center">
+                  <span class="dot" :class="row.success ? 'dot-green' : 'dot-red'"></span>
+                </td>
+                <td class="px-3 py-1.5 text-right text-gray-400" x-text="row.latency_ms ? (row.latency_ms.toFixed(0) + 'ms') : '-'"></td>
+                <td class="px-3 py-1.5">
+                  <span x-show="row.error_type" class="px-1.5 py-0.5 rounded text-[10px] font-medium"
+                    :class="errorClass(row.error_type)"
+                    x-text="row.error_type"></span>
+                </td>
+                <td class="px-3 py-1.5 text-right text-gray-400" x-text="row.quality_score != null ? row.quality_score.toFixed(2) : '-'"></td>
+              </tr>
+            </template>
+            <tr x-show="items.length === 0">
+              <td colspan="7" class="px-3 py-8 text-center text-gray-600">無紀錄</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <!-- 分頁 -->
+      <div class="flex items-center justify-between px-3 py-2 border-t border-gray-800 text-xs text-gray-500">
+        <span x-text="paginationText"></span>
+        <div class="flex gap-2">
+          <button @click="page--; fetchData()" :disabled="page <= 1"
+            class="px-3 py-1 bg-gray-800 hover:bg-gray-700 disabled:opacity-30 disabled:cursor-not-allowed rounded">上一頁</button>
+          <button @click="page++; fetchData()" :disabled="page >= totalPages"
+            class="px-3 py-1 bg-gray-800 hover:bg-gray-700 disabled:opacity-30 disabled:cursor-not-allowed rounded">下一頁</button>
+        </div>
+      </div>
+    </div>
+  </main>
+
+<script>
+function healthLog() {
+  const base = window.location.pathname.includes('/llm-switch/') ? '/llm-switch' : '';
+  return {
+    base,
+    items: [],
+    total: 0,
+    page: 1,
+    perPage: 50,
+    filters: { providers: [], models: [], error_types: [] },
+    filterProvider: '',
+    filterModel: '',
+    filterSuccess: '',
+    filterErrorType: '',
+
+    get totalPages() { return Math.max(1, Math.ceil(this.total / this.perPage)); },
+
+    get paginationText() {
+      if (this.total === 0) return '無紀錄';
+      const from = (this.page - 1) * this.perPage + 1;
+      const to = Math.min(this.page * this.perPage, this.total);
+      return `第 ${from}-${to} 筆，共 ${this.total} 筆（第 ${this.page}/${this.totalPages} 頁）`;
+    },
+
+    get filteredModels() {
+      if (!this.filterProvider) return this.filters.models;
+      // 如果選了 provider，只顯示該 provider 出現過的 model
+      // 由於我們沒有 provider-model mapping，先回傳全部
+      return this.filters.models;
+    },
+
+    async init() {
+      await this.fetchData();
+    },
+
+    async fetchData() {
+      const params = new URLSearchParams();
+      params.set('page', this.page);
+      params.set('per_page', this.perPage);
+      if (this.filterProvider) params.set('provider', this.filterProvider);
+      if (this.filterModel) params.set('model', this.filterModel);
+      if (this.filterSuccess) params.set('success', this.filterSuccess);
+      if (this.filterErrorType) params.set('error_type', this.filterErrorType);
+
+      try {
+        const r = await fetch(`${base}/admin/health-checks?${params}`);
+        if (r.status === 401) { window.location.href = base + '/dashboard/'; return; }
+        const data = await r.json();
+        this.items = data.items || [];
+        this.total = data.total || 0;
+        this.filters = data.filters || { providers: [], models: [], error_types: [] };
+      } catch (e) {
+        console.error('Failed to fetch health checks:', e);
+      }
+    },
+
+    fmtTime(ts) {
+      if (!ts) return '-';
+      // "2026-04-05 15:14:26" → "04-05 15:14:26"
+      return ts.slice(5, 19);
+    },
+
+    errorClass(type) {
+      const map = {
+        auth: 'bg-red-900/60 text-red-300',
+        timeout: 'bg-orange-900/60 text-orange-300',
+        rate_limit: 'bg-yellow-900/60 text-yellow-300',
+        server_error: 'bg-purple-900/60 text-purple-300',
+        unknown: 'bg-gray-700 text-gray-300',
+      };
+      return map[type] || 'bg-gray-700 text-gray-300';
+    },
+  };
+}
+</script>
+</body>
+</html>

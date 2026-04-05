@@ -61,6 +61,7 @@
     <div class="flex items-center gap-3 text-xs text-gray-500">
       <span x-text="providers.filter(p=>p.enabled&&p.has_api_key).length + '/' + providers.length + ' 可用'"></span>
       <span x-text="currentUser?.display_name || currentUser?.username" class="text-gray-400"></span>
+      <a :href="base + '/dashboard/health-log.html'" class="px-3 py-1 bg-gray-800 hover:bg-gray-700 rounded-lg text-gray-300">檢查紀錄</a>
       <button @click="showPwModal=true" class="px-3 py-1 bg-gray-800 hover:bg-gray-700 rounded-lg text-gray-300">改密碼</button>
       <button @click="refresh()" class="px-3 py-1 bg-gray-800 hover:bg-gray-700 rounded-lg text-gray-300">重整</button>
       <button @click="doLogout()" class="px-3 py-1 bg-gray-800 hover:bg-red-900 rounded-lg text-gray-300">登出</button>
@@ -138,7 +139,9 @@
                   <span class="font-mono text-gray-300 w-52 truncate" x-text="m.id"></span>
                   <span class="font-mono" :class="(m.score?.composite||0)>=0.7?'text-green-400':(m.score?.composite||0)>=0.4?'text-yellow-400':'text-gray-600'"
                     x-text="m.score ? ((m.score.composite*100)|0)+'分' : '--'"></span>
-                  <span x-text="m.score?.latency_p50 ? (m.score.latency_p50|0)+'ms' : ''"></span>
+                  <span class="px-1.5 py-0.5 rounded text-[10px] font-medium"
+                    :class="modelStatus(p, m).cls"
+                    x-text="modelStatus(p, m).text"></span>
                   <span class="flex-1 text-right" x-text="quotaText(m)"></span>
                 </div>
               </template>
@@ -311,6 +314,40 @@ function app() {
         return sb - sa;
       });
       return list;
+    },
+
+    modelStatus(p, m) {
+      // 沒有 API key
+      if (!p.has_api_key) return { text: '未設 Key', cls: 'bg-yellow-900/60 text-yellow-300' };
+      // 沒有 provider 啟用
+      if (!p.enabled) return { text: '已關閉', cls: 'bg-gray-700 text-gray-400' };
+      // 從最近檢查判斷
+      const checks = m.recent_checks || [];
+      if (checks.length > 0) {
+        const last = checks[0];
+        // 最近一次檢查失敗
+        if (!last.success) {
+          const errMap = {
+            auth: { text: '權限問題', cls: 'bg-red-900/60 text-red-300' },
+            rate_limit: { text: '頻率限制', cls: 'bg-yellow-900/60 text-yellow-300' },
+            timeout: { text: '逾時', cls: 'bg-orange-900/60 text-orange-300' },
+            server_error: { text: '伺服器錯誤', cls: 'bg-purple-900/60 text-purple-300' },
+          };
+          return errMap[last.error_type] || { text: '異常', cls: 'bg-red-900/60 text-red-300' };
+        }
+      }
+      // 餘額不足 (<10%)
+      const rpd = m.rate_limits?.rpd || 0;
+      const used = m.quota?.day?.used_requests || 0;
+      if (rpd > 0 && (rpd - used) / rpd < 0.10) return { text: '餘額不足', cls: 'bg-yellow-900/60 text-yellow-300' };
+      // 延遲高
+      if (m.score?.latency_p50 > 3000) return { text: '緩慢', cls: 'bg-orange-900/60 text-orange-300' };
+      // 成功率低
+      if (m.score?.success_rate != null && m.score.success_rate < 0.7) return { text: '不穩定', cls: 'bg-yellow-900/60 text-yellow-300' };
+      // 沒有檢查紀錄
+      if (checks.length === 0) return { text: '未檢查', cls: 'bg-gray-700 text-gray-400' };
+      // 正常
+      return { text: '正常', cls: 'bg-green-900/60 text-green-300' };
     },
 
     quotaText(m) {
