@@ -290,7 +290,7 @@ async def get_stats(request: Request) -> dict[str, Any]:
 
     # Today's usage from event_log
     now = datetime.now(timezone.utc)
-    day_start = now.replace(hour=0, minute=0, second=0, microsecond=0).isoformat()
+    day_start = now.strftime("%Y-%m-%d 00:00:00")
     cursor = await db.execute(
         "SELECT COUNT(*) as calls, COALESCE(SUM(tokens),0) as tokens FROM event_log WHERE type='api_call' AND timestamp >= ?",
         (day_start,),
