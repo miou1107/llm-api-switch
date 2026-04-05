@@ -170,7 +170,7 @@ class Router:
         headers = self._provider_headers(provider)
         payload = self._build_payload(model_id, request)
 
-        async with httpx.AsyncClient(timeout=60) as client:
+        async with httpx.AsyncClient(timeout=10) as client:
             resp = await client.post(url, json=payload, headers=headers)
             resp.raise_for_status()
             return resp.json()
@@ -253,7 +253,7 @@ class Router:
         headers = self._provider_headers(provider)
         payload = self._build_payload(model_id, request)
 
-        client = httpx.AsyncClient(timeout=httpx.Timeout(60, connect=10))
+        client = httpx.AsyncClient(timeout=httpx.Timeout(10, connect=5))
         try:
             resp = await client.send(
                 client.build_request("POST", url, json=payload, headers=headers),

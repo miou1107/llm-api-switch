@@ -9,11 +9,12 @@ routing:
 
 scoring:
   weights:
-    success_rate: 0.30
-    quality: 0.25
-    latency: 0.20
-    quota_remaining: 0.15
+    success_rate: 0.20
+    quality: 0.15
+    latency: 0.45
+    quota_remaining: 0.10
     freshness: 0.10
+  latency_hard_cap_ms: 15000  # providers with median latency above this get penalized to near-zero
 
 monitor:
   ping_interval_seconds: 3600      # 1 hour — free-tier providers have strict rate limits

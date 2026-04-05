@@ -66,15 +66,15 @@ class Scorer:
     def __init__(self, db: aiosqlite.Connection, settings: dict[str, Any]) -> None:
         self.db = db
         default_weights = {
-            "success_rate": 0.30,
-            "quality": 0.25,
-            "latency": 0.20,
-            "quota_remaining": 0.15,
+            "success_rate": 0.20,
+            "quality": 0.15,
+            "latency": 0.45,
+            "quota_remaining": 0.10,
             "freshness": 0.10,
         }
-        self.weights: dict[str, float] = (
-            settings.get("scoring", {}).get("weights", default_weights)
-        )
+        scoring_cfg = settings.get("scoring", {})
+        self.weights: dict[str, float] = scoring_cfg.get("weights", default_weights)
+        self.latency_hard_cap_ms: float = scoring_cfg.get("latency_hard_cap_ms", 15000)
 
     async def compute_score(self, provider_id: str, model_id: str) -> float:
         """Compute the composite score for a single provider/model pair."""
@@ -117,13 +117,22 @@ class Scorer:
         latest_timestamp = checks[0].get("timestamp") if checks else None
         freshness = _freshness_score(latest_timestamp)
 
+        # --- Latency hard cap: penalize extremely slow providers ---
+        median_latency = median(latencies) if latencies else 0
+        if median_latency > self.latency_hard_cap_ms:
+            latency_score = 0.01
+            logger.info(
+                "latency hard cap hit: provider=%s model=%s median=%.0fms > %dms",
+                provider_id, model_id, median_latency, self.latency_hard_cap_ms,
+            )
+
         # --- Composite ---
         w = self.weights
         composite = (
-            w.get("success_rate", 0.30) * success_rate
-            + w.get("quality", 0.25) * quality_score
-            + w.get("latency", 0.20) * latency_score
-            + w.get("quota_remaining", 0.15) * quota_remaining
+            w.get("success_rate", 0.20) * success_rate
+            + w.get("quality", 0.15) * quality_score
+            + w.get("latency", 0.45) * latency_score
+            + w.get("quota_remaining", 0.10) * quota_remaining
             + w.get("freshness", 0.10) * freshness
         )
         composite = round(min(max(composite, 0.0), 1.0), 4)
