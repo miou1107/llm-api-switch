@@ -4,11 +4,9 @@ WORKDIR /app
 
 # Install dependencies first (layer caching)
 COPY pyproject.toml .
-RUN pip install --no-cache-dir . 2>/dev/null || \
-    pip install --no-cache-dir \
+RUN pip install --no-cache-dir \
       "fastapi>=0.115.0" \
       "uvicorn[standard]>=0.30.0" \
-      "litellm>=1.40.0" \
       "httpx>=0.27.0" \
       "aiosqlite>=0.20.0" \
       "pyyaml>=6.0" \

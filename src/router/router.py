@@ -2,14 +2,13 @@
 
 from __future__ import annotations
 
-import json
 import logging
 import time
 import uuid
 from typing import Any, AsyncIterator
 
 import aiosqlite
-import litellm
+import httpx
 
 from src.db.queries import (
     get_provider_score,
@@ -17,16 +16,14 @@ from src.db.queries import (
     record_quota_usage,
 )
 from src.gateway.schemas import (
-    ChatCompletionChunk,
     ChatCompletionRequest,
     ChatCompletionResponse,
     ChatMessage,
     Choice,
-    StreamChoice,
     Usage,
 )
 from src.pool.manager import PoolManager
-from src.pool.provider import ModelConfig, ProviderConfig, RateLimits
+from src.pool.provider import ProviderConfig
 from src.pool.quota_tracker import QuotaTracker
 from src.router.fallback import FallbackChain
 from src.router.strategies import STRATEGIES, ScoredCandidate
@@ -127,15 +124,40 @@ class Router:
         selected = await strategy_fn(candidates, counter_key=request.model)
         return selected.provider_config, selected.model_id
 
-    def _build_litellm_model(
-        self, provider: ProviderConfig, model_id: str
-    ) -> str:
-        """Build the litellm model string."""
-        if provider.litellm_provider:
-            if model_id.startswith(f"{provider.litellm_provider}/"):
-                return model_id
-            return f"{provider.litellm_provider}/{model_id}"
-        return model_id
+    def _build_payload(
+        self, model_id: str, request: ChatCompletionRequest
+    ) -> dict[str, Any]:
+        """Build the OpenAI-compatible JSON payload."""
+        payload: dict[str, Any] = {
+            "model": model_id,
+            "messages": [m.model_dump(exclude_none=True) for m in request.messages],
+            "stream": request.stream,
+        }
+        if request.temperature is not None:
+            payload["temperature"] = request.temperature
+        if request.top_p is not None:
+            payload["top_p"] = request.top_p
+        if request.max_tokens is not None:
+            payload["max_tokens"] = request.max_tokens
+        if request.stop is not None:
+            payload["stop"] = request.stop
+        if request.tools is not None:
+            payload["tools"] = request.tools
+        if request.tool_choice is not None:
+            payload["tool_choice"] = request.tool_choice
+        return payload
+
+    @staticmethod
+    def _provider_headers(provider: ProviderConfig) -> dict[str, str]:
+        headers: dict[str, str] = {"Content-Type": "application/json"}
+        api_key = provider.api_key
+        if api_key:
+            headers["Authorization"] = f"Bearer {api_key}"
+        return headers
+
+    @staticmethod
+    def _provider_url(provider: ProviderConfig) -> str:
+        return f"{provider.base_url.rstrip('/')}/chat/completions"
 
     async def call_provider(
         self,
@@ -143,45 +165,15 @@ class Router:
         model_id: str,
         request: ChatCompletionRequest,
     ) -> Any:
-        """Call a provider via litellm.acompletion()."""
-        litellm_model = self._build_litellm_model(provider, model_id)
+        """Call a provider via httpx (OpenAI-compatible endpoint)."""
+        url = self._provider_url(provider)
+        headers = self._provider_headers(provider)
+        payload = self._build_payload(model_id, request)
 
-        kwargs: dict[str, Any] = {
-            "model": litellm_model,
-            "messages": [m.model_dump(exclude_none=True) for m in request.messages],
-            "stream": request.stream,
-        }
-
-        # Optional parameters
-        if request.temperature is not None:
-            kwargs["temperature"] = request.temperature
-        if request.top_p is not None:
-            kwargs["top_p"] = request.top_p
-        if request.max_tokens is not None:
-            kwargs["max_tokens"] = request.max_tokens
-        if request.stop is not None:
-            kwargs["stop"] = request.stop
-        if request.tools is not None:
-            kwargs["tools"] = request.tools
-        if request.tool_choice is not None:
-            kwargs["tool_choice"] = request.tool_choice
-
-        # Provider auth
-        api_key = provider.api_key
-        if api_key:
-            kwargs["api_key"] = api_key
-
-        # Pass api_base for custom endpoints (even if litellm_provider is set)
-        if provider.base_url:
-            # Skip only for native litellm providers that don't need custom base_url
-            native_urls = {"api.groq.com", "api.mistral.ai", "api.cerebras.ai",
-                          "generativelanguage.googleapis.com", "api.deepseek.com"}
-            is_native = any(h in provider.base_url for h in native_urls)
-            if not is_native:
-                kwargs["api_base"] = provider.base_url
-
-        response = await litellm.acompletion(**kwargs)
-        return response
+        async with httpx.AsyncClient(timeout=60) as client:
+            resp = await client.post(url, json=payload, headers=headers)
+            resp.raise_for_status()
+            return resp.json()
 
     async def handle_request(
         self, request: ChatCompletionRequest
@@ -219,9 +211,8 @@ class Router:
         winner = chain.successful_candidate
 
         if winner:
-            tokens_used = 0
-            if hasattr(response, "usage") and response.usage:
-                tokens_used = getattr(response.usage, "total_tokens", 0)
+            usage = response.get("usage") or {}
+            tokens_used = usage.get("total_tokens", 0)
 
             await record_health_check(
                 self.db,
@@ -251,6 +242,31 @@ class Router:
 
         return self._to_response(response, request.model, winner)
 
+    async def _call_provider_stream(
+        self,
+        provider: ProviderConfig,
+        model_id: str,
+        request: ChatCompletionRequest,
+    ) -> httpx.Response:
+        """Start a streaming request; returns the httpx Response (caller iterates)."""
+        url = self._provider_url(provider)
+        headers = self._provider_headers(provider)
+        payload = self._build_payload(model_id, request)
+
+        client = httpx.AsyncClient(timeout=httpx.Timeout(60, connect=10))
+        try:
+            resp = await client.send(
+                client.build_request("POST", url, json=payload, headers=headers),
+                stream=True,
+            )
+            resp.raise_for_status()
+        except Exception:
+            await client.aclose()
+            raise
+        # Attach client so we can close later
+        resp._client = client  # type: ignore[attr-defined]
+        return resp
+
     async def handle_streaming_request(
         self, request: ChatCompletionRequest
     ) -> AsyncIterator[str]:
@@ -262,44 +278,28 @@ class Router:
         async def _call(
             provider: ProviderConfig, model_id: str
         ) -> Any:
-            return await self.call_provider(provider, model_id, request)
+            return await self._call_provider_stream(provider, model_id, request)
 
         start_time = time.monotonic()
-        response = await chain.execute(candidates, _call)
+        resp: httpx.Response = await chain.execute(candidates, _call)
         winner = chain.successful_candidate
 
-        completion_id = f"chatcmpl-{uuid.uuid4().hex[:24]}"
-        created = int(time.time())
-
-        async for chunk in response:
-            delta_content = None
-            finish_reason = None
-
-            if hasattr(chunk, "choices") and chunk.choices:
-                choice = chunk.choices[0]
-                delta = getattr(choice, "delta", None)
-                if delta:
-                    delta_content = getattr(delta, "content", None)
-                finish_reason = getattr(choice, "finish_reason", None)
-
-            sse_chunk = ChatCompletionChunk(
-                id=completion_id,
-                created=created,
-                model=request.model,
-                choices=[
-                    StreamChoice(
-                        index=0,
-                        delta=ChatMessage(
-                            role="assistant",
-                            content=delta_content,
-                        ),
-                        finish_reason=finish_reason,
-                    )
-                ],
-            )
-            yield f"data: {sse_chunk.model_dump_json()}\n\n"
-
-        yield "data: [DONE]\n\n"
+        try:
+            async for line in resp.aiter_lines():
+                line = line.strip()
+                if not line:
+                    continue
+                # Forward SSE lines as-is from upstream
+                if line.startswith("data:"):
+                    yield f"{line}\n\n"
+                # Some providers send lines without "data:" prefix
+                elif line.startswith("{"):
+                    yield f"data: {line}\n\n"
+        finally:
+            await resp.aclose()
+            client = getattr(resp, "_client", None)
+            if client:
+                await client.aclose()
 
         elapsed_ms = (time.monotonic() - start_time) * 1000
         if winner:
@@ -313,40 +313,40 @@ class Router:
 
     def _to_response(
         self,
-        litellm_response: Any,
+        raw: dict[str, Any],
         requested_model: str,
         winner: ScoredCandidate | None,
     ) -> ChatCompletionResponse:
-        """Convert litellm response to our schema."""
+        """Convert raw JSON dict to our schema."""
         choices: list[Choice] = []
-        for c in litellm_response.choices:
-            msg = c.message
+        for c in raw.get("choices", []):
+            msg = c.get("message", {})
             choices.append(
                 Choice(
-                    index=c.index,
+                    index=c.get("index", 0),
                     message=ChatMessage(
-                        role=msg.role,
-                        content=getattr(msg, "content", None),
-                        tool_calls=getattr(msg, "tool_calls", None),
+                        role=msg.get("role", "assistant"),
+                        content=msg.get("content"),
+                        tool_calls=msg.get("tool_calls"),
                     ),
-                    finish_reason=c.finish_reason,
+                    finish_reason=c.get("finish_reason"),
                 )
             )
 
         usage = None
-        if litellm_response.usage:
+        raw_usage = raw.get("usage")
+        if raw_usage:
             usage = Usage(
-                prompt_tokens=litellm_response.usage.prompt_tokens,
-                completion_tokens=litellm_response.usage.completion_tokens,
-                total_tokens=litellm_response.usage.total_tokens,
+                prompt_tokens=raw_usage.get("prompt_tokens", 0),
+                completion_tokens=raw_usage.get("completion_tokens", 0),
+                total_tokens=raw_usage.get("total_tokens", 0),
             )
 
-        # Use actual model_id from winner, not the requested name (e.g. "auto")
         actual_model = winner.model_id if winner else requested_model
 
         return ChatCompletionResponse(
-            id=litellm_response.id,
-            created=litellm_response.created,
+            id=raw.get("id", f"chatcmpl-{uuid.uuid4().hex[:24]}"),
+            created=raw.get("created", int(time.time())),
             model=actual_model,
             choices=choices,
             usage=usage,

@@ -8,7 +8,7 @@ import time
 from typing import Any
 
 import aiosqlite
-import litellm
+import httpx
 
 from src.db.queries import record_health_check
 from src.pool.manager import PoolManager
@@ -56,25 +56,34 @@ class HealthChecker:
     # Ping (latency & availability)
     # ------------------------------------------------------------------
 
+    @staticmethod
+    def _api_url(provider: ProviderConfig) -> str:
+        return f"{provider.base_url.rstrip('/')}/chat/completions"
+
+    @staticmethod
+    def _api_headers(provider: ProviderConfig) -> dict[str, str]:
+        headers: dict[str, str] = {"Content-Type": "application/json"}
+        api_key = provider.api_key
+        if api_key:
+            headers["Authorization"] = f"Bearer {api_key}"
+        return headers
+
     async def ping_check(
         self, provider: ProviderConfig, model: ModelConfig
     ) -> dict[str, Any]:
         """Send a minimal completion and record latency / success."""
-        model_name = (
-            model.id
-            if "/" in model.id
-            else f"{provider.litellm_provider}/{model.id}"
-        )
+        url = self._api_url(provider)
+        headers = self._api_headers(provider)
+        payload = {
+            "model": model.id,
+            "messages": [{"role": "user", "content": "Say hi"}],
+            "max_tokens": 5,
+        }
         start = time.monotonic()
         try:
-            await litellm.acompletion(
-                model=model_name,
-                messages=[{"role": "user", "content": "Say hi"}],
-                max_tokens=5,
-                timeout=15,
-                api_key=provider.api_key,
-                api_base=provider.base_url,
-            )
+            async with httpx.AsyncClient(timeout=15) as client:
+                resp = await client.post(url, json=payload, headers=headers)
+                resp.raise_for_status()
             latency_ms = (time.monotonic() - start) * 1000
             result: dict[str, Any] = {
                 "provider_id": provider.id,
@@ -166,23 +175,21 @@ class HealthChecker:
         self, provider: ProviderConfig, model: ModelConfig
     ) -> dict[str, Any]:
         """Send a standardised prompt and score the output quality."""
-        model_name = (
-            model.id
-            if "/" in model.id
-            else f"{provider.litellm_provider}/{model.id}"
-        )
+        url = self._api_url(provider)
+        headers = self._api_headers(provider)
+        payload = {
+            "model": model.id,
+            "messages": [{"role": "user", "content": _QUALITY_PROMPT}],
+            "max_tokens": 300,
+        }
         start = time.monotonic()
         try:
-            resp = await litellm.acompletion(
-                model=model_name,
-                messages=[{"role": "user", "content": _QUALITY_PROMPT}],
-                max_tokens=300,
-                timeout=30,
-                api_key=provider.api_key,
-                api_base=provider.base_url,
-            )
+            async with httpx.AsyncClient(timeout=30) as client:
+                resp = await client.post(url, json=payload, headers=headers)
+                resp.raise_for_status()
+            data = resp.json()
             latency_ms = (time.monotonic() - start) * 1000
-            content = resp.choices[0].message.content or ""
+            content = data["choices"][0]["message"].get("content", "") or ""
             quality = self._score_quality(content)
 
             result: dict[str, Any] = {
